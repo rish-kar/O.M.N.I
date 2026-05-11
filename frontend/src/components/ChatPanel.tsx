@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { api, ApiError } from "../api";
 import { useStore } from "../store";
-import { Mic, Square as StopIcon, Send, Volume2, VolumeX, Loader2, X, Radio } from "lucide-react";
+import { Mic, Square as StopIcon, Send, Volume2, Loader2, X, Radio } from "lucide-react";
 import { Tooltip, InfoHint } from "./Tooltip";
 import ChatHistoryButton from "./ChatHistoryButton";
 
@@ -26,6 +26,7 @@ export default function ChatPanel() {
   const pushMessage         = useStore((s) => s.pushMessage);
   const personality         = useStore((s) => (s as any).personality);
   const voiceCfg            = useStore((s) => (s as any).voice);
+  const perms               = useStore((s) => (s as any).perms);
   const pushToast           = useStore((s) => s.pushToast);
   const pushError           = useStore((s) => s.pushError);
   const currentSessionId    = useStore((s) => s.currentSessionId);
@@ -36,7 +37,6 @@ export default function ChatPanel() {
   const [busy, setBusy]                   = useState(false);
   const [recording, setRecording]         = useState(false);
   const [transcribing, setTranscribing]   = useState(false);
-  const [autoSpeak, setAutoSpeak]         = useState<boolean>(true);
   const [level, setLevel]                 = useState(0);
   const [voiceState, setVoiceState]       = useState<VoiceState>("idle");
 
@@ -66,38 +66,47 @@ export default function ChatPanel() {
   };
 
   useEffect(() => { sessionIdRef.current = currentSessionId; }, [currentSessionId]);
-  // Mirror the server-side default ONLY when not actively in a live voice session,
-  // so toggling Live mode reliably forces auto-speak on regardless of saved prefs.
+
+  // On mount: mark the current last assistant message as already-spoken so a
+  // layout switch doesn't re-play it. Also stop all audio on unmount to
+  // prevent double-play when switching layouts (each layout remounts ChatPanel).
   useEffect(() => {
-    if (voiceStateRef.current === "idle") {
-      setAutoSpeak(!!voiceCfg?.auto_speak_replies);
+    const last = messages[messages.length - 1];
+    if (last?.role === "assistant") {
+      lastSpoken.current = `${last.ts}-${last.content.slice(0, 24)}`;
     }
-  }, [voiceCfg?.auto_speak_replies]);
+    return () => {
+      speakAbort.current?.();
+      if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = null; }
+      stream.current?.getTracks().forEach((t) => t.stop());
+      try { audioCtx.current?.close(); } catch {}
+      audioCtx.current = null;
+      analyser.current = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Auto-speak: play reply and, in voice mode, continue the conversation loop
+  // Auto-speak: play reply and continue the conversation loop.
+  // Only runs in live voice mode — text mode always replies silently.
   useEffect(() => {
-    if (!autoSpeak) return;
+    if (voiceState === "idle") return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
     const key = `${last.ts}-${last.content.slice(0, 24)}`;
     if (lastSpoken.current === key) return;
     lastSpoken.current = key;
 
-    const inVoiceMode = voiceStateRef.current !== "idle";
-    if (inVoiceMode) setVS("speaking");
-
+    setVS("speaking");
     speakText(last.content).then(() => {
-      // Resume listening if voice mode is still on (covers normal end + interruption)
       if (voiceStateRef.current !== "idle") {
         setVS("listening");
         startRecording();
       }
     });
-  }, [messages, autoSpeak]);
+  }, [messages, voiceState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleApiError = (e: any, fallback: string, source: string) => {
     if (e instanceof ApiError) {
@@ -263,7 +272,7 @@ export default function ChatPanel() {
 
     try {
       const inVoice = voiceStateRef.current !== "idle";
-      const r = await api.chat(text, sessionIdRef.current, inVoice);
+      const r = await api.chat(text, sessionIdRef.current, inVoice, !!perms?.screen_watch);
       if (r?.session_id && r.session_id !== sessionIdRef.current) {
         sessionIdRef.current = r.session_id;
         setCurrentSessionId(r.session_id);
@@ -465,7 +474,6 @@ export default function ChatPanel() {
   const toggleVoiceMode = () => {
     if (voiceStateRef.current === "idle") {
       setVS("listening");
-      if (!autoSpeak) setAutoSpeak(true);
       startRecording();
     } else {
       endVoiceMode();
@@ -528,25 +536,18 @@ export default function ChatPanel() {
             </button>
           </Tooltip>
 
-          {/* Auto-speak toggle */}
-          <Tooltip
-            side="bottom"
-            content={autoSpeak
-              ? "Auto-speak ON. Every reply is read aloud."
-              : "Auto-speak OFF. Replies are text only — hover any reply and click the speaker to play it."}
-          >
-            <button
-              className={`h-7 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px]
-                          border transition-all whitespace-nowrap
-                          ${autoSpeak
-                            ? "border-omni-ember/35 bg-omni-ember/10 text-omni-flame"
-                            : "border-white/10 bg-white/[0.04] text-omni-mute hover:text-omni-text"}`}
-              onClick={() => setAutoSpeak((v) => !v)}
+          {/* In live mode, show a mute toggle so the user can silence the AI mid-session */}
+          {inVoiceMode && (
+            <Tooltip
+              side="bottom"
+              content="Live mode always speaks. Click to end voice mode instead."
             >
-              {autoSpeak ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />}
-              {autoSpeak ? "Auto-speak" : "Muted"}
-            </button>
-          </Tooltip>
+              <span className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-md text-[11px]
+                              border border-omni-ember/35 bg-omni-ember/10 text-omni-flame whitespace-nowrap">
+                <Volume2 className="h-3 w-3" />Speaking
+              </span>
+            </Tooltip>
+          )}
         </div>
       </div>
 
@@ -577,36 +578,31 @@ export default function ChatPanel() {
 
       {/* ===== Composer ===== */}
       <div className="flex gap-2 items-center">
-        <Tooltip
-          content={
-            voiceState === "speaking" ? "Tap to interrupt and speak."
-            : recording                ? "Stop & send. Esc cancels without sending."
-            : `Talk to ${omniName}.`
-          }
-        >
-          <button
-            className={`relative h-9 w-9 inline-flex items-center justify-center rounded-lg border transition-all
-                        ${recording
-                          ? "border-transparent text-white shadow-ember"
-                          : voiceState === "speaking"
-                            ? "border-omni-ember/50 bg-omni-ember/15 text-omni-flame animate-pulse"
-                            : inVoiceMode
-                              ? "border-omni-flame/40 bg-omni-flame/10 text-omni-flame hover:bg-omni-flame/20"
-                              : "border-white/10 bg-white/[0.04] hover:bg-white/[0.10] hover:border-white/20"}`}
-            onClick={onMicClick}
-            disabled={transcribing || (busy && voiceState !== "speaking")}
-            aria-label={recording ? "Stop recording" : "Start recording"}
-            style={recording ? { backgroundImage: "linear-gradient(135deg, #15346e 0%, #b91c1c 100%)" } : undefined}
+        {/* Mic button: hidden in live mode (barge-in + VAD handle everything automatically) */}
+        {!inVoiceMode && (
+          <Tooltip
+            content={recording ? "Stop & send. Esc cancels without sending." : `Talk to ${omniName}.`}
           >
-            {recording ? <StopIcon className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
-            {recording && (
-              <span
-                className="absolute inset-0 rounded-lg pointer-events-none"
-                style={{ boxShadow: `0 0 ${10 + level * 30}px rgba(220,38,38,${0.30 + level * 0.55})` }}
-              />
-            )}
-          </button>
-        </Tooltip>
+            <button
+              className={`relative h-9 w-9 inline-flex items-center justify-center rounded-lg border transition-all
+                          ${recording
+                            ? "border-transparent text-white shadow-ember"
+                            : "border-white/10 bg-white/[0.04] hover:bg-white/[0.10] hover:border-white/20"}`}
+              onClick={onMicClick}
+              disabled={transcribing || busy}
+              aria-label={recording ? "Stop recording" : "Start recording"}
+              style={recording ? { backgroundImage: "linear-gradient(135deg, #15346e 0%, #b91c1c 100%)" } : undefined}
+            >
+              {recording ? <StopIcon className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+              {recording && (
+                <span
+                  className="absolute inset-0 rounded-lg pointer-events-none"
+                  style={{ boxShadow: `0 0 ${10 + level * 30}px rgba(220,38,38,${0.30 + level * 0.55})` }}
+                />
+              )}
+            </button>
+          </Tooltip>
+        )}
 
         <input
           className="input flex-1"

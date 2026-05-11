@@ -98,7 +98,8 @@ class StartReq(BaseModel):
 class ChatReq(BaseModel):
     message: str
     session_id: Optional[int] = None
-    fast: bool = False  # voice mode sets this so we pick the smaller/faster model
+    fast: bool = False       # voice mode sets this so we pick the smaller/faster model
+    with_screen: bool = False  # capture all monitors and attach to the VLM message
 
 
 class SessionCreateReq(BaseModel):
@@ -302,8 +303,25 @@ async def chat(req: ChatReq) -> dict:
         else:
             log.info("fast model %s not installed; falling back to text_reason", wanted)
 
+    # Capture screenshots when screen watch is enabled and requested.
+    screen_images = None
+    if req.with_screen and settings.perms.screen_watch:
+        try:
+            from .perception.screen import grab_all_monitors
+            screen_images = await asyncio.to_thread(grab_all_monitors)
+            if screen_images:
+                n = len(screen_images)
+                note = (
+                    f"\n[Screen context: {n} monitor screenshot{'s' if n > 1 else ''} attached. "
+                    "Describe what you see if relevant to the user's question.]"
+                )
+                history[0]["content"] += note
+                log.info("screen capture: %d monitor(s) attached", n)
+        except Exception as e:
+            log.warning("screen capture failed: %s", e)
+
     try:
-        reply = await llm.chat(history, model=chat_model)
+        reply = await llm.chat(history, model=chat_model, images=screen_images)
     except Exception as e:
         log.exception("LLM chat failed")
         msg = str(e) or e.__class__.__name__

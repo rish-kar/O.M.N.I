@@ -79,8 +79,8 @@ export const api = {
   closeBrowser:  () => jfetch("/browser/close",  { method: "POST" }),
   browserTabs:   () => jfetch("/browser/tabs"),
 
-  chat: (message: string, session_id?: number | null, fast?: boolean) =>
-    jfetch("/chat", { method: "POST", body: JSON.stringify({ message, session_id: session_id ?? null, fast: !!fast }) }),
+  chat: (message: string, session_id?: number | null, fast?: boolean, with_screen?: boolean) =>
+    jfetch("/chat", { method: "POST", body: JSON.stringify({ message, session_id: session_id ?? null, fast: !!fast, with_screen: !!with_screen }) }),
 
   chatHistory: (session_id?: number | null, limit = 200) =>
     jfetch(`/chat/history?${session_id != null ? `session_id=${session_id}&` : ""}limit=${limit}`),
