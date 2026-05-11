@@ -1,0 +1,303 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =====================================================================
+   Root canvas
+   ===================================================================== */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  color: #f1f5f9;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  background: #03060e;
+}
+
+/* =====================================================================
+   Animated smoky background (deeper, more dramatic than before)
+   - Layered drifting blurred radial gradients (8 clouds)
+   - Vertical "smoke-rising" plumes (6 streaks)
+   - Slow conic light sweep
+   - SVG turbulence noise grain
+   - Diagonal scan band
+   - Vignette
+   ===================================================================== */
+.omni-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(1300px 900px at 50% -10%, #0a1633 0%, transparent 60%),
+    radial-gradient(900px 700px at 100% 100%, #15346e 0%, transparent 55%),
+    radial-gradient(700px 600px at 0% 90%, #7f1d1d 0%, transparent 60%),
+    #03060e;
+}
+
+/* Slowly rotating conic gradient adds an "atmospheric pressure" feel */
+.omni-bg .conic {
+  position: absolute;
+  inset: -25%;
+  background:
+    conic-gradient(from 0deg at 50% 50%,
+      rgba(91, 163, 245, 0.06) 0deg,
+      transparent 60deg,
+      rgba(220, 38, 38, 0.07) 180deg,
+      transparent 240deg,
+      rgba(91, 163, 245, 0.05) 360deg);
+  animation: spin 60s linear infinite;
+  filter: blur(40px);
+  opacity: 0.9;
+}
+
+.omni-bg .smoke {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.omni-bg .smoke.royal  { background: radial-gradient(closest-side, rgba(30,74,158,0.75),  transparent 70%); }
+.omni-bg .smoke.blue   { background: radial-gradient(closest-side, rgba(91,163,245,0.55), transparent 70%); }
+.omni-bg .smoke.crimson{ background: radial-gradient(closest-side, rgba(185,28,28,0.65),  transparent 70%); }
+.omni-bg .smoke.ember  { background: radial-gradient(closest-side, rgba(220,38,38,0.55),  transparent 70%); }
+.omni-bg .smoke.glow   { background: radial-gradient(closest-side, rgba(252,165,165,0.30),transparent 70%); }
+.omni-bg .smoke.blood  { background: radial-gradient(closest-side, rgba(127,29,29,0.70),  transparent 70%); }
+
+/* Cloud placement + drift period - 8 distinct trajectories so the picture
+   never repeats and the scene always feels alive. */
+.omni-bg .smoke-1 { width: 760px; height: 760px; left: -200px; top: -180px;     animation: drift-1 28s ease-in-out infinite; opacity: 0.65; }
+.omni-bg .smoke-2 { width: 600px; height: 600px; right: -160px; top: 14%;       animation: drift-2 38s ease-in-out infinite; opacity: 0.55; }
+.omni-bg .smoke-3 { width: 520px; height: 520px; left: 32%; bottom: -160px;     animation: drift-3 32s ease-in-out infinite; opacity: 0.60; }
+.omni-bg .smoke-4 { width: 700px; height: 700px; right: -180px; bottom: -200px; animation: drift-4 42s ease-in-out infinite; opacity: 0.65; }
+.omni-bg .smoke-5 { width: 420px; height: 420px; left: 48%;  top: 18%;          animation: drift-5 26s ease-in-out infinite; opacity: 0.45; animation-delay: -8s; }
+.omni-bg .smoke-6 { width: 360px; height: 360px; left: 8%;   top: 55%;          animation: drift-2 30s ease-in-out infinite; opacity: 0.50; animation-delay: -14s; }
+.omni-bg .smoke-7 { width: 480px; height: 480px; right: 18%; top: 55%;          animation: drift-6 44s ease-in-out infinite; opacity: 0.55; }
+.omni-bg .smoke-8 { width: 300px; height: 300px; left: 70%;  bottom: 8%;        animation: drift-3 28s ease-in-out infinite; opacity: 0.45; animation-delay: -10s; }
+
+/* Vertical smoke-rising plumes */
+.omni-bg .streak {
+  position: absolute;
+  bottom: -10%;
+  width: 260px;
+  height: 75vh;
+  filter: blur(70px);
+  background: radial-gradient(ellipse at center,
+              rgba(91,163,245,0.20) 0%,
+              rgba(91,163,245,0.10) 35%,
+              transparent 75%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: smoke-rise 22s linear infinite;
+}
+.omni-bg .streak.s1 { left: 8%;  animation-delay: 0s;   width: 320px; }
+.omni-bg .streak.s2 { left: 28%; animation-delay: -7s;  width: 240px;
+  background: radial-gradient(ellipse at center,
+              rgba(220,38,38,0.20) 0%,
+              rgba(220,38,38,0.10) 35%,
+              transparent 75%); }
+.omni-bg .streak.s3 { left: 48%; animation-delay: -12s; width: 280px; }
+.omni-bg .streak.s4 { left: 68%; animation-delay: -4s;  width: 220px;
+  background: radial-gradient(ellipse at center,
+              rgba(252,165,165,0.18) 0%,
+              transparent 70%); }
+.omni-bg .streak.s5 { left: 86%; animation-delay: -18s; width: 260px;
+  background: radial-gradient(ellipse at center,
+              rgba(127,29,29,0.20) 0%,
+              transparent 75%); }
+.omni-bg .streak.s6 { left: 18%; animation-delay: -10s; width: 200px;
+  background: radial-gradient(ellipse at center,
+              rgba(91,163,245,0.18) 0%,
+              transparent 75%); }
+
+/* Horizontal scan band drifting top-to-bottom */
+.omni-bg .scan-band {
+  position: absolute;
+  left: 0; right: 0; height: 220px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(91,163,245,0.05) 20%,
+    rgba(220,38,38,0.06) 50%,
+    rgba(91,163,245,0.05) 80%,
+    transparent 100%);
+  filter: blur(20px);
+  mix-blend-mode: screen;
+  animation: scan-line 14s linear infinite;
+}
+
+/* SVG-noise grain (defs in Background.tsx) */
+.omni-bg .grain {
+  position: absolute;
+  inset: 0;
+  filter: url(#omni-noise);
+  opacity: 0.45;
+  mix-blend-mode: overlay;
+}
+
+/* Subtle film-grain scan lines */
+.omni-bg .scan {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255,255,255,0.018) 0px,
+    rgba(255,255,255,0.018) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: overlay;
+}
+
+/* Edge vignette so the centre stays readable */
+.omni-bg .vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.55) 100%),
+    linear-gradient(180deg, transparent 65%, rgba(0,0,0,0.40) 100%);
+}
+
+/* =====================================================================
+   Component classes
+   ===================================================================== */
+@layer components {
+
+  /* --- Glass surfaces --- */
+  .panel {
+    @apply rounded-xl border border-white/[0.07] backdrop-blur-xl;
+    background: linear-gradient(180deg, rgba(17,23,42,0.78) 0%, rgba(11,16,28,0.65) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.05),
+      0 12px 36px rgba(0,0,0,0.55);
+  }
+  .panel-hi {
+    @apply rounded-xl border border-white/[0.10] backdrop-blur-xl;
+    background: linear-gradient(180deg, rgba(24,31,54,0.85) 0%, rgba(15,21,38,0.75) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.07),
+      0 16px 50px rgba(0,0,0,0.6);
+  }
+  .panel-soft {
+    @apply rounded-lg border border-white/[0.05] backdrop-blur-md;
+    background: rgba(255,255,255,0.02);
+  }
+  .ring-fire {
+    background:
+      linear-gradient(180deg, rgba(17,23,42,0.85), rgba(11,16,28,0.78)) padding-box,
+      linear-gradient(135deg, #5ba3f5, #b91c1c) border-box;
+    border: 1px solid transparent;
+  }
+
+  /* --- Chips / badges --- */
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-2 h-6 rounded-md text-[11px]
+           border border-white/10 bg-white/[0.04] backdrop-blur-sm
+           whitespace-nowrap;
+  }
+
+  /* --- Buttons - shared sizing -----------------------------------
+     Every variant uses the same h-9 + flex centering so:
+       - icons never overlap text (gap-1.5 spacing is reserved)
+       - text never wraps mid-button (whitespace-nowrap)
+       - the visible button never gets cropped
+     Variants:
+       .btn          neutral
+       .btn-primary  signature gradient (midnight → crimson)
+       .btn-danger   destructive
+       .btn-sm       smaller (h-7)
+       .btn-icon     square (h-9 w-9, no x-padding)
+       .btn-icon-sm  small square (h-7 w-7)
+     ----------------------------------------------------------------*/
+  .btn {
+    @apply h-9 inline-flex items-center justify-center gap-1.5 px-3.5
+           rounded-lg text-sm font-medium whitespace-nowrap select-none
+           transition-all duration-150
+           border border-white/10 bg-white/[0.04] backdrop-blur-md
+           text-omni-text
+           hover:bg-white/[0.09] hover:border-white/20
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-omni-ice/50
+           disabled:opacity-50 disabled:cursor-not-allowed
+           disabled:hover:bg-white/[0.04] disabled:hover:border-white/10;
+  }
+  .btn-sm       { @apply h-7 px-2.5 text-xs gap-1; }
+  .btn-icon     { @apply h-9 w-9 px-0; }
+  .btn-icon-sm  { @apply h-7 w-7 px-0; }
+
+  .btn-primary {
+    @apply h-9 inline-flex items-center justify-center gap-1.5 px-4
+           rounded-lg text-sm font-semibold whitespace-nowrap select-none
+           transition-all duration-150
+           text-white border border-transparent shadow-fire
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-omni-ember/60
+           disabled:cursor-not-allowed;
+    background-image: linear-gradient(135deg, #15346e 0%, #b91c1c 60%, #dc2626 100%);
+  }
+  .btn-primary:hover { filter: brightness(1.10) saturate(1.05); }
+  .btn-primary:disabled { filter: grayscale(0.55) brightness(0.62); }
+
+  .btn-danger {
+    @apply h-9 inline-flex items-center justify-center gap-1.5 px-3.5
+           rounded-lg text-sm font-medium whitespace-nowrap select-none
+           transition-all duration-150
+           border border-omni-danger/30 bg-omni-danger/10 text-omni-danger
+           hover:bg-omni-danger/20 hover:border-omni-danger/55
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-omni-danger/50
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* --- Input --- */
+  .input {
+    @apply h-9 px-3 w-full rounded-lg text-sm text-omni-text outline-none
+           transition-colors
+           border border-white/10 bg-black/30 backdrop-blur-md
+           placeholder:text-omni-mute
+           focus:border-omni-ice/50 focus:bg-black/40
+           disabled:opacity-60;
+  }
+  .input-sm { @apply h-8 text-xs; }
+
+  /* --- Headings --- */
+  .heading {
+    @apply text-[10px] uppercase tracking-[0.22em] text-omni-mute font-semibold;
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-fire-text;
+  }
+}
+
+/* =====================================================================
+   Scrollbar
+   ===================================================================== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #252e4a, #363f5f);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #363f5f, #b91c1c);
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Selection */
+::selection { background: rgba(220, 38, 38, 0.40); color: #fff; }
+
+/* =====================================================================
+   Reduced motion
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .omni-bg .smoke,
+  .omni-bg .streak,
+  .omni-bg .conic,
+  .omni-bg .scan-band {
+    animation: none !important;
+  }
+}

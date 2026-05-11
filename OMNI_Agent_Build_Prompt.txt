@@ -1,0 +1,1085 @@
+LOCAL JARVIS-STYLE JOB APPLICATION AGENT - BUILD PROMPT
+==========================================================
+
+----------------------------------------------------------------------
+1. ROLE
+----------------------------------------------------------------------
+
+You are a senior AI systems architect, Windows desktop automation engineer, local-LLM engineer, and privacy-first product designer.
+
+Design a fully local Windows desktop AI agent that runs on my own laptop and helps me apply for jobs. The agent must work without OpenAI API, Anthropic API, Gemini API, paid API keys, hosted LLM calls, or any cloud inference dependency.
+
+The target machine is an Alienware mR2 laptop with an RTX 4090 GPU. Assume I am willing to use local GPU/CPU power and download open-source models, but I do not want recurring cost. The system must be built primarily for Windows.
+
+Think of the product as a local Jarvis-style computer assistant:
+- It can see the screen.
+- It can move the mouse.
+- It can click.
+- It can type.
+- It can read local files.
+- It can search/index local repositories, folders, resumes, cover letters, trackers, notes, and documents.
+- It can ask me questions when it is unsure.
+- It can learn from my actions when learning mode is enabled.
+- It can remember user-approved answers and reuse them later.
+- It can use the internet only after user permission.
+- It must not depend on any external LLM API key.
+
+Do not give a vague concept. Produce a concrete build specification, architecture, component list, storage plan, permissions model, and implementation roadmap.
+
+----------------------------------------------------------------------
+2. CORE PRODUCT VISION
+----------------------------------------------------------------------
+
+Build a privacy-first local desktop assistant for job applications.
+
+The agent should behave like an intelligent assistant sitting beside me:
+- When I work, it can watch the screen if I enable screen mode.
+- When I take control, it should observe and learn reusable steps if learning mode is enabled.
+- When it works, it should minimise itself to the Windows tray.
+- It should interrupt only when required using small notification-style prompts.
+- I should be able to talk to it using voice.
+- I should also be able to chat with it in a modern futuristic desktop UI and via the small notification chat when it is unsure.
+- It should maintain memory across days instead of losing context.
+- It should manage local files safely, including resumes, cover letters, trackers, downloaded documents, and job notes.
+
+The agent should not blindly submit final applications. Final submission must require explicit user approval unless I later create a trusted rule for a specific site/workflow.
+
+----------------------------------------------------------------------
+3. STRICT CONSTRAINTS
+----------------------------------------------------------------------
+
+A. Local-only intelligence:
+- No paid LLM API.
+- No cloud inference.
+- No mandatory SaaS dependency.
+- Use local models through Ollama, llama.cpp, LM Studio local server, Transformers, UI-TARS, or similar open-source/local runtimes.
+- The internet may be used only through the browser and only after user permission.
+
+B. Windows-first:
+- Primary operating system is Windows.
+- Use Windows-compatible automation libraries.
+- Use tray support and desktop notifications.
+- Support Chrome automation because the main workflow uses Chrome.
+
+C. Vision-first operation:
+- The agent should be able to understand screen state using screenshots and vision-language models. The screenshots should automatically be deleted to clear up space after the agent has understood.
+- It should not rely only on brittle UI field detection.
+- It may use DOM automation, Playwright, Chrome DevTools Protocol, accessibility tree, or UI Automation API as reliability helpers, but the core design must include screen vision.
+
+D. Human-in-the-loop:
+- Ask the user before:
+  - submitting a job application,
+  - answering unknown eligibility/sponsorship/security questions,
+  - modifying original resume files,
+  - sending personal information,
+  - accessing new folders,
+  - using the internet,
+  - solving CAPTCHA or anything that looks like a bot-check.
+- Never bypass CAPTCHA, paywalls, anti-bot systems, or website security.
+- Respect website terms and avoid spam application behaviour.
+
+E. Data safety:
+- Make backups before editing resume files, cover letters, or Excel trackers.
+- Keep logs locally.
+- Store secrets locally and encrypted.
+- Allow memory export/delete.
+- Use file allowlists and deny sensitive folders by default unless explicitly approved.
+
+F. Low-token / high-impact:
+- Use compressed state summaries.
+- Use retrieval instead of dumping all memory into every prompt.
+- For screenshots, crop relevant regions before sending to the local vision model.
+- Store procedural memory as reusable steps, not huge raw histories.
+- Store job application outcomes in structured form.
+- Prefer deterministic tools for file operations instead of asking the LLM to rewrite entire files.
+
+----------------------------------------------------------------------
+4. REQUIRED USER EXPERIENCE
+----------------------------------------------------------------------
+
+A. Main UI:
+- Beautiful modern futuristic desktop UI.
+- Windows app with:
+  - chat panel,
+  - voice mode button,
+  - job task dashboard,
+  - memory viewer,
+  - permissions panel,
+  - local file index status,
+  - model status,
+  - active browser/task status,
+  - pause/resume/stop buttons,
+  - learning mode toggle,
+  - screen watch toggle,
+  - internet permission toggle.
+
+B. Tray behaviour:
+- When task starts, minimise main UI to tray automatically.
+- Show small toast/notification-style questions when needed.
+- Notification should include:
+  - question,
+  - detected context,
+  - suggested answer if available,
+  - approve/edit/skip buttons.
+- User should be able to reopen full UI from tray.
+
+C. Voice mode:
+- Offline speech-to-text.
+- Offline text-to-speech.
+- Push-to-talk and optional wake-word mode.
+- Voice questions should be short and confirm before high-risk actions.
+
+D. Learning mode:
+- When enabled, observe user actions:
+  - screenshots,
+  - active window,
+  - mouse clicks,
+  - typed values,
+  - page titles/URLs,
+  - before/after state.
+- Convert repeated behaviour into procedural memory:
+  - "On Workday, answer X like Y."
+  - "For sponsorship questions, ask user unless stored answer exists."
+  - "For LinkedIn non-Easy Apply job search, filter like this."
+- Never store passwords, 2FA codes, bank details, or private messages as learned answers.
+
+----------------------------------------------------------------------
+5. JOB APPLICATION WORKFLOW TO SUPPORT
+----------------------------------------------------------------------
+
+The target workflow is:
+
+1. User opens Chrome and logs into required websites manually.
+   Websites may include LinkedIn, Glassdoor, company career sites, Workday, Greenhouse, Lever, SmartRecruiters, Ashby, Indeed, or other job boards.
+
+2. User opens 8 ChatGPT project tabs manually in Chrome.
+   These tabs are already logged in and ready.
+   The agent must not use OpenAI API. It may interact with ChatGPT web UI only through browser/screen automation if the user explicitly permits.
+
+3. User starts the local agent and enters job search instructions in the UI chat.
+   Example:
+   "Search Senior Java Backend Engineer jobs in London, avoid Easy Apply, prefer sponsor-friendly companies."
+
+4. Agent searches job websites from Chrome.
+   It should:
+   - search by title, location, keywords,
+   - ignore Easy Apply jobs when requested,
+   - identify jobs with external application routes,
+   - open job descriptions,
+   - capture job title, company, location, job link, posting date if visible, and JD text.
+
+5. Agent collects 8 suitable jobs.
+   For each job:
+   - open one of the 8 ChatGPT project tabs,
+   - paste a structured prompt containing the JD and job link,
+   - wait for ChatGPT to score the job and generate cover letter/resume changes,
+   - extract score, verdict, missing keywords, resume changes, salary if present, and cover letter download link/file.
+
+6. Agent downloads cover letters generated by ChatGPT.
+   It should:
+   - save each cover letter into a structured local folder,
+   - rename files consistently:
+     CompanyName_Role_Cover_Letter.docx
+   - record the file path in the tracker.
+
+7. Agent updates the application tracker Excel file.
+   The tracker path will be provided by the user.
+   It should store:
+   - date,
+   - company,
+   - role,
+   - location,
+   - job URL,
+   - job board/source,
+   - score,
+   - verdict,
+   - cover letter path,
+   - resume version path,
+   - application status,
+   - notes,
+   - questions asked,
+   - user answers learned.
+
+8. Agent opens the resume file provided by the user.
+   It should:
+   - create a backup copy,
+   - apply only the resume changes proposed by ChatGPT,
+   - preserve formatting where possible,
+   - create a job-specific resume copy instead of overwriting the master resume,
+   - show a diff/preview if possible,
+   - ask user approval before final save.
+
+9. Agent returns to the job site and applies.
+   It should:
+   - fill forms,
+   - upload tailored resume,
+   - upload generated cover letter,
+   - answer known questions from memory,
+   - ask the user when unsure,
+   - save new answers to memory only after approval,
+   - stop before final submit and ask for confirmation.
+
+10. Agent records the final status.
+   Examples:
+   - Applied
+   - User Review Needed
+   - Blocked by Login
+   - Blocked by CAPTCHA
+   - Missing Answer
+   - Site Error
+   - Not Suitable
+   - Duplicate Application
+
+----------------------------------------------------------------------
+6. MEMORY REQUIREMENTS
+----------------------------------------------------------------------
+
+The agent must have persistent memory across sessions.
+
+Memory types:
+
+A. Profile memory:
+- user name,
+- resume paths,
+- cover letter template paths,
+- job tracker path,
+- work authorisation preferences,
+- sponsorship wording,
+- preferred job titles,
+- target locations,
+- salary expectations,
+- safe answers for repeated forms,
+- unsafe questions that always require confirmation.
+
+B. Application memory:
+- every job found,
+- every job applied,
+- company,
+- role,
+- URL,
+- score,
+- date,
+- status,
+- cover letter path,
+- resume path,
+- form answers used,
+- problems encountered.
+
+C. Procedural memory:
+- how to operate LinkedIn search,
+- how to operate Glassdoor search,
+- how to fill Workday,
+- how to fill Greenhouse,
+- how to fill Lever,
+- how to use 8 ChatGPT project tabs,
+- how to update the tracker,
+- how to name files.
+
+D. Document memory:
+- indexed local folders,
+- resume content,
+- cover letter templates,
+- GitHub repositories,
+- notes,
+- previous answers,
+- job tracker records.
+
+E. Conversation memory:
+- summaries of previous conversations with the agent,
+- decisions made,
+- approved/rejected answers.
+
+Recommended memory architecture:
+- SQLite for structured memory and audit logs.
+- SQLite FTS5 for local text search.
+- LanceDB or Chroma for vector search over files, notes, repos, JDs, previous answers, and documents.
+- Local embeddings model such as bge-small/en, nomic-embed-text, or another open embedding model through Ollama/Transformers.
+- Store raw files separately; store embeddings and metadata in local index.
+- Add a memory manager that decides what to save, what to summarise, and what to forget.
+
+----------------------------------------------------------------------
+7. LOCAL MODEL REQUIREMENTS
+----------------------------------------------------------------------
+
+The design should recommend local models based on RTX 4090 laptop hardware.
+
+A. Text reasoning model:
+Use one of:
+- Qwen3 / Qwen2.5 family instruct model,
+- DeepSeek-R1 distilled model,
+- Llama-family instruct model,
+- Mistral-family instruct model,
+- Gemma-family instruct model.
+
+Recommended starting point:
+- 14B or 32B quantised instruct model for reasoning if VRAM allows.
+- 7B/8B model for fast background tasks.
+- Separate coder model if needed for file parsing, scripts, or repository Q&A.
+
+B. Vision-language model:
+Use one of:
+- Qwen2.5-VL 7B/32B,
+- UI-TARS 7B for GUI action prediction,
+- LLaVA / Llama vision model if easier to run locally.
+
+The vision model should:
+- read screenshots,
+- identify buttons/fields,
+- describe current screen state,
+- infer next UI action,
+- verify whether a click/type action succeeded.
+
+C. Speech-to-text:
+Use:
+- faster-whisper with CUDA, or
+- whisper.cpp.
+
+D. Text-to-speech:
+Use:
+- Piper,
+- another fully local open-source TTS engine.
+
+E. Embeddings:
+Use:
+- nomic-embed-text,
+- bge-small / bge-base,
+- other local embedding model.
+
+F. Model runtime:
+Use one of:
+- Ollama for easiest local model management,
+- llama.cpp for high-performance local inference,
+- LM Studio local server for GUI-driven local model management,
+- Transformers/PyTorch for vision models needing custom pipelines.
+
+The final design must include fallback model sizes because laptop RTX 4090 VRAM may be lower than desktop RTX 4090 VRAM. Detect actual VRAM at startup.
+
+----------------------------------------------------------------------
+8. AGENT ARCHITECTURE
+----------------------------------------------------------------------
+
+Use a modular architecture.
+
+A. Desktop UI layer:
+- modern UI,
+- chat,
+- voice mode,
+- status,
+- permissions,
+- tray,
+- notifications.
+
+B. Agent orchestrator:
+- task planner,
+- step executor,
+- state machine,
+- memory manager,
+- tool router,
+- local LLM interface,
+- local VLM interface,
+- safety gate.
+
+C. Perception layer:
+- screenshot capture,
+- active window detection,
+- OCR if needed,
+- vision-language screen description,
+- element localisation,
+- change detection before/after actions.
+
+D. Action layer:
+- mouse movement,
+- clicks,
+- keyboard input,
+- clipboard paste,
+- window switching,
+- browser tab switching,
+- file download handling,
+- application launch,
+- safe pause/stop.
+
+E. Browser layer:
+- Chrome control through Playwright/CDP where useful,
+- URL/page title capture,
+- job page extraction,
+- tab management,
+- download management.
+- Do not rely only on hardcoded selectors; use screen vision fallback.
+
+F. File layer:
+- read/write Word documents,
+- read/write Excel tracker,
+- copy/move/rename downloaded files,
+- create backups,
+- manage application folders,
+- index local directories.
+
+G. Voice layer:
+- microphone capture,
+- local transcription,
+- local speech synthesis,
+- voice command routing,
+- confirmation prompts.
+
+H. Memory layer:
+- profile memory,
+- application memory,
+- procedural memory,
+- document index,
+- retrieval,
+- summarisation,
+- deletion/export.
+
+I. Safety layer:
+- permission prompts,
+- audit logging,
+- final-submit gate,
+- file modification gate,
+- internet access gate,
+- unknown-question gate,
+- anti-CAPTCHA bypass rule,
+- emergency stop.
+
+----------------------------------------------------------------------
+9. RECOMMENDED TECH STACK COMBINATIONS
+----------------------------------------------------------------------
+
+Propose and compare these 3 stack options. Choose one primary recommendation and explain why.
+
+----------------------------------------------------------------------
+STACK OPTION 1: FASTEST PRACTICAL MVP - PYTHON + TAURI + OLLAMA
+----------------------------------------------------------------------
+
+Best for:
+- fastest useful prototype,
+- job workflow automation,
+- local model experimentation,
+- easiest integration with Python automation libraries.
+
+Frontend:
+- Tauri + React + TypeScript.
+- Futuristic UI using Tailwind/shadcn or custom CSS.
+- Tauri tray + notifications.
+
+Backend:
+- Python FastAPI sidecar service.
+- LangGraph or custom finite-state task graph for workflow orchestration.
+- Local tool registry.
+
+Local LLM:
+- Ollama for text models.
+- Start with Qwen/DeepSeek/Llama/Gemma quantised models.
+- Use smaller fast model for background extraction and larger model for reasoning.
+
+Vision:
+- Qwen2.5-VL through Transformers/PyTorch or Ollama-compatible vision model if available.
+- Screenshot capture using mss.
+- Image processing using OpenCV/Pillow.
+- Optional OCR using Tesseract/PaddleOCR.
+
+Automation:
+- Playwright for Chrome/browser automation.
+- pyautogui for mouse/keyboard.
+- pywinauto for Windows app/window control.
+- pyperclip/clipboard for stable long text entry.
+
+Files:
+- python-docx for Word resume edits.
+- openpyxl for Excel tracker updates.
+- pathlib/shutil for file movement and backups.
+
+Memory:
+- SQLite + FTS5 for structured memory.
+- LanceDB or Chroma for vector search.
+- Local embedding model via Ollama or sentence-transformers.
+
+Voice:
+- faster-whisper or whisper.cpp for offline STT.
+- Piper for offline TTS.
+
+Pros:
+- quickest to build.
+- excellent Python ecosystem.
+- easy file automation.
+- good for Windows with pywinauto/pyautogui.
+- Tauri gives modern UI and tray support.
+
+Cons:
+- Python desktop automation can be fragile.
+- Need careful packaging.
+- Vision GUI control quality depends heavily on model and screen-state handling.
+
+Recommended use:
+- Build this first as MVP.
+
+----------------------------------------------------------------------
+STACK OPTION 2: COMPUTER-USE-FIRST - UI-TARS / AGENT TARS + BROWSER-USE
+----------------------------------------------------------------------
+
+Best for:
+- strongest visual computer-control direction,
+- screen-first UI interaction,
+- agent that behaves more like a human operating a computer.
+
+Frontend:
+- Tauri or Electron desktop shell.
+- Tray + notifications.
+- Embedded task dashboard.
+
+Agent / Computer Use:
+- UI-TARS Desktop or Agent TARS style architecture.
+- Use UI-TARS 7B for GUI action prediction where possible.
+- Browser-use + Playwright for web tasks.
+- Custom controller for job application workflow.
+
+Local LLM:
+- UI-TARS model for GUI action reasoning.
+- Additional local text model through Ollama/llama.cpp for planning, summarisation, memory, and form answer reasoning.
+
+Vision:
+- UI-TARS model or Qwen2.5-VL for screenshot interpretation.
+- Screenshot-to-action loop:
+  1. capture screenshot,
+  2. understand state,
+  3. propose action,
+  4. execute,
+  5. verify result.
+
+Automation:
+- Browser-use for browser workflows.
+- Playwright for reliable browser actions.
+- pyautogui/pywinauto fallback for non-browser UI.
+
+Files:
+- Python file tools for DOCX/XLSX.
+- Local download manager.
+
+Memory:
+- SQLite + LanceDB/Chroma.
+- Procedural memory for repeated sites.
+
+Voice:
+- faster-whisper/whisper.cpp + Piper.
+
+Pros:
+- closest to "Jarvis watching the screen".
+- better fit for visual GUI tasks.
+- useful when websites vary heavily.
+- can handle browser + desktop workflows.
+
+Cons:
+- higher complexity.
+- may be harder to stabilise.
+- action prediction needs strict safety checks.
+- large GUI models may be heavy on laptop hardware.
+
+Recommended use:
+- Choose this if screen-vision autonomy is the main priority after MVP.
+
+----------------------------------------------------------------------
+STACK OPTION 3: WINDOWS-PRODUCTION STACK - .NET/WINUI + PYTHON AI SIDECAR + LLAMA.CPP
+----------------------------------------------------------------------
+
+Best for:
+- polished Windows-native product,
+- robust tray/notifications,
+- long-term maintainability,
+- strong Windows automation integration.
+
+Frontend:
+- .NET 8/9 + WinUI 3 or Avalonia.
+- Native Windows tray.
+- Native Windows notifications.
+- Modern futuristic XAML UI.
+
+Backend:
+- C# app for UI, permissions, tray, Windows integration.
+- Python AI sidecar service for ML/model/file automation.
+- Local IPC via localhost-only HTTP, named pipes, or gRPC.
+
+Local LLM:
+- llama.cpp server with CUDA build.
+- LM Studio local server as optional manual model manager.
+- Ollama as easier fallback.
+
+Vision:
+- Python/PyTorch service for Qwen2.5-VL or UI-TARS.
+- Screen capture from Windows Graphics Capture API or Python mss.
+- OpenCV/Pillow for image preprocessing.
+
+Automation:
+- Windows UI Automation API.
+- FlaUI for app control.
+- Playwright for Chrome.
+- pyautogui fallback for low-level mouse/keyboard.
+
+Files:
+- OpenXML SDK or ClosedXML for Excel.
+- OpenXML SDK or python-docx for Word.
+- Strong file backup/versioning.
+
+Memory:
+- SQLite for structured records.
+- LanceDB/Chroma for vectors.
+- Optional local file watcher for automatic indexing.
+
+Voice:
+- faster-whisper/whisper.cpp local executable.
+- Piper local executable.
+
+Pros:
+- best Windows-native UX.
+- strong packaging and installer path.
+- better long-term desktop app quality.
+- clean separation between UI and AI engine.
+
+Cons:
+- slower to build than Python-first MVP.
+- requires C#/.NET + Python integration.
+- more engineering overhead.
+
+Recommended use:
+- Choose this after MVP if the goal is a serious daily-use Windows application.
+
+----------------------------------------------------------------------
+10. PRIMARY RECOMMENDATION
+----------------------------------------------------------------------
+
+Recommend this order:
+
+Phase 1:
+Use Stack Option 1: Python + Tauri + Ollama.
+Reason:
+- fastest path to working agent,
+- easiest file automation,
+- easiest local model integration,
+- supports tray UI,
+- supports Chrome automation,
+- can already perform the job application workflow.
+
+Phase 2:
+Add selected parts of Stack Option 2:
+- UI-TARS style screen-action loop,
+- better visual grounding,
+- browser-use style browser task abstraction.
+
+Phase 3:
+If the tool becomes daily-critical, migrate UI/integration layer toward Stack Option 3:
+- Windows-native shell,
+- stronger installer,
+- better notifications/tray,
+- stronger permission model.
+
+----------------------------------------------------------------------
+11. REQUIRED INTERNAL WORKFLOW DESIGN
+----------------------------------------------------------------------
+
+Implement the agent as a state machine, not as a single uncontrolled autonomous loop.
+
+Recommended states:
+
+1. IDLE
+- Waiting for user command.
+
+2. PREPARE
+- Check Chrome is open.
+- Check user is logged in.
+- Check 8 ChatGPT tabs are available if the user enables ChatGPT-web workflow.
+- Check tracker path.
+- Check resume path.
+- Check download folder.
+- Check internet permission.
+
+3. SEARCH_JOBS
+- Search LinkedIn/Glassdoor/company sites.
+- Apply user filters.
+- Skip Easy Apply if requested.
+- Collect candidate jobs.
+
+4. EXTRACT_JD
+- Open job page.
+- Capture title, company, link, JD text, location, posting date.
+- Save local JD snapshot.
+
+5. SEND_TO_CHATGPT_TAB
+- Switch to a ChatGPT project tab.
+- Paste structured prompt.
+- Wait for answer.
+- Parse score/verdict/changes.
+- Download cover letter if generated.
+
+6. UPDATE_TRACKER
+- Open or directly edit Excel tracker.
+- Add structured row.
+- Save safely.
+
+7. TAILOR_RESUME
+- Create backup.
+- Apply proposed changes to job-specific resume copy.
+- Ask user for review if changes are non-trivial.
+
+8. APPLY_ON_SITE
+- Return to job site.
+- Fill application form.
+- Upload resume and cover letter.
+- Ask user for unknown answers.
+
+9. FINAL_REVIEW
+- Show summary:
+  - company,
+  - role,
+  - files uploaded,
+  - key answers,
+  - score,
+  - tracker status.
+- Ask final submit confirmation.
+
+10. SUBMIT_OR_SAVE
+- Submit only after user approval.
+- Otherwise save as "User Review Needed".
+
+11. MEMORY_UPDATE
+- Save safe learned answers.
+- Save procedural notes.
+- Save application status.
+
+12. DONE
+- Show completion summary.
+
+13. ERROR_RECOVERY
+- Screenshot error.
+- Explain what happened.
+- Offer retry, skip, or hand control to user.
+
+----------------------------------------------------------------------
+12. CHATGPT WEB-TAB PROMPT TEMPLATE USED BY THE AGENT
+----------------------------------------------------------------------
+
+When sending a job to a ChatGPT project tab, paste a strict structured prompt like this:
+
+"Evaluate this job using my existing project rules.
+
+Job URL:
+[URL]
+
+Company:
+[COMPANY]
+
+Role:
+[ROLE]
+
+Location:
+[LOCATION]
+
+Job Description:
+[JD TEXT]
+
+Required output:
+1. Score out of 10 using my job-matching framework.
+2. Short apply/skip verdict.
+3. Salary range if available.
+4. JD keywords missing from my resume.
+5. Exact resume lines to update, with minimal truthful changes only.
+6. Generate a tailored one-page cover letter as downloadable DOCX if score is 5 or above.
+7. Keep output short and section-wise."
+
+The local agent should not invent scoring. It should parse the result returned in the ChatGPT tab.
+
+----------------------------------------------------------------------
+13. FORM QUESTION HANDLING
+----------------------------------------------------------------------
+
+For job application forms:
+
+A. If answer is known from approved memory:
+- Fill it.
+- Log it.
+
+B. If answer is sensitive or uncertain:
+- Ask user.
+- Provide suggested wording only if confidence is high.
+- Save answer only if user approves.
+
+C. Always ask for:
+- salary expectation if not already approved,
+- sponsorship wording,
+- work authorisation wording,
+- disability/diversity questions,
+- criminal record questions,
+- relocation questions,
+- legal declarations,
+- references,
+- security clearance,
+- anything that requires truth confirmation.
+
+D. Never guess:
+- visa status,
+- notice period,
+- salary,
+- legal eligibility,
+- degree dates,
+- employment dates,
+- references,
+- identity details,
+- demographic answers.
+
+----------------------------------------------------------------------
+14. LOCAL FILE ACCESS REQUIREMENTS
+----------------------------------------------------------------------
+
+The agent should support:
+- user-provided resume path,
+- user-provided cover letter folder,
+- user-provided tracker Excel path,
+- user-provided local repository root,
+- user-provided documents folder.
+
+Rules:
+- No full-disk indexing by default.
+- Ask before indexing a folder.
+- Show estimated number of files.
+- Allow file-type filters:
+  - .docx
+  - .pdf
+  - .xlsx
+  - .csv
+  - .md
+  - .txt
+  - .java
+  - .py
+  - .json
+  - .yaml
+  - .xml
+  - .sql
+- Do not index browser cookies, passwords, key files, credentials, or hidden system directories unless explicitly approved.
+
+----------------------------------------------------------------------
+15. SECURITY AND PRIVACY DESIGN
+----------------------------------------------------------------------
+
+Implement:
+- local-only config,
+- encrypted memory store for sensitive answers,
+- audit log,
+- permission prompts,
+- file access allowlist,
+- internet permission gate,
+- emergency stop hotkey,
+- pause/resume,
+- visible status indicator when screen watching is on,
+- manual delete memory option,
+- export memory option,
+- backup before edits,
+- no silent submission,
+- no CAPTCHA bypass,
+- no password capture,
+- no hidden data upload.
+
+----------------------------------------------------------------------
+16. EVALUATION CRITERIA
+----------------------------------------------------------------------
+
+The implementation is successful only if:
+
+A. It can run locally on Windows.
+B. It can use a local LLM without API keys.
+C. It can see the screen.
+D. It can control Chrome.
+E. It can ask the user questions in tray notifications.
+F. It can work with voice offline.
+G. It can index selected local folders.
+H. It can remember approved answers.
+I. It can search for non-Easy Apply jobs.
+J. It can send 8 job descriptions into 8 ChatGPT tabs.
+K. It can parse ChatGPT outputs.
+L. It can download cover letters.
+M. It can update an Excel tracker.
+N. It can make a job-specific resume copy.
+O. It can apply on external sites with human approval before final submit.
+P. It can recover safely from errors.
+Q. It never uses paid API keys or cloud inference.
+
+----------------------------------------------------------------------
+17. DEVELOPMENT ROADMAP
+----------------------------------------------------------------------
+
+MVP 0 - Local skeleton:
+- Build Tauri/React or desktop UI.
+- Add tray + notifications.
+- Add local Python backend.
+- Add Ollama local model connection.
+- Add chat interface.
+- Add pause/stop.
+
+MVP 1 - Screen and browser control:
+- Add screenshot capture.
+- Add Chrome tab detection.
+- Add Playwright/CDP connection.
+- Add mouse/keyboard actions.
+- Add screen-state verification.
+
+MVP 2 - Memory:
+- Add SQLite.
+- Add structured job/application memory.
+- Add local file path settings.
+- Add safe answer memory.
+- Add audit logs.
+
+MVP 3 - Job search:
+- Search LinkedIn/Glassdoor/company sites.
+- Identify non-Easy Apply jobs.
+- Extract JD and URL.
+- Save job snapshots.
+
+MVP 4 - ChatGPT tab workflow:
+- Detect 8 ChatGPT project tabs.
+- Send 8 JDs.
+- Wait and parse outputs.
+- Download generated cover letters.
+
+MVP 5 - Tracker and resume:
+- Update Excel tracker.
+- Create job-specific resume copy.
+- Apply proposed resume changes.
+- Backup files.
+
+MVP 6 - Application filling:
+- Fill external forms.
+- Upload resume/cover letter.
+- Ask unknown questions.
+- Human approval before submit.
+
+MVP 7 - Voice:
+- Add offline speech-to-text.
+- Add offline TTS.
+- Add voice command routing.
+
+MVP 8 - Learning mode:
+- Record user-approved action traces.
+- Convert into procedural memory.
+- Reuse learned workflows.
+
+MVP 9 - Hardening:
+- Error recovery.
+- Better visual grounding.
+- Multi-site templates.
+- Memory export/delete.
+- Installer.
+- Performance optimisation.
+
+----------------------------------------------------------------------
+18. PERFORMANCE REQUIREMENTS
+----------------------------------------------------------------------
+
+- Detect GPU/VRAM at startup.
+- Allow model profile selection:
+  - Fast mode: small 7B/8B model.
+  - Balanced mode: 14B model.
+  - Deep reasoning mode: 32B quantised model if feasible.
+  - Vision mode: VLM only when screen understanding is needed.
+- Crop screenshots before VLM calls.
+- Cache page summaries.
+- Cache form answers.
+- Use deterministic scripts for Excel/DOCX.
+- Do not ask the LLM to reprocess the entire tracker or resume unless needed.
+- Use queues for long tasks.
+- Keep UI responsive.
+
+----------------------------------------------------------------------
+19. EXPECTED OUTPUT FROM YOU, THE AI AGENT/DEVELOPER
+----------------------------------------------------------------------
+
+Return:
+
+1. Final recommended architecture.
+2. Best stack choice from the 3 options.
+3. Exact libraries/frameworks to use.
+4. Local model recommendations with VRAM assumptions.
+5. Component diagram in text.
+6. Database schema outline.
+7. Permission model.
+8. Job workflow implementation plan.
+9. Screen vision loop design.
+10. Browser automation design.
+11. File editing design.
+12. Voice mode design.
+13. Memory design.
+14. Error recovery design.
+15. MVP build order.
+16. Risks and mitigations.
+17. What not to build in v1.
+18. Installation/deployment plan for Windows.
+19. Example folder structure.
+20. Example task-state machine.
+
+Keep the answer practical, implementation-oriented, and minimal-fluff.
+
+----------------------------------------------------------------------
+20. IMPORTANT REFERENCE ANCHORS FOR TECH SELECTION
+----------------------------------------------------------------------
+
+Use current documentation/repositories as reference points:
+
+- Ollama Windows:
+  https://docs.ollama.com/windows
+
+- Ollama GPU support:
+  https://docs.ollama.com/gpu
+
+- llama.cpp:
+  https://github.com/ggml-org/llama.cpp
+
+- Qwen2.5-VL:
+  https://qwenlm.github.io/blog/qwen2.5-vl/
+
+- UI-TARS:
+  https://github.com/bytedance/ui-tars
+
+- UI-TARS Desktop:
+  https://github.com/bytedance/UI-TARS-desktop
+
+- Browser-use:
+  https://github.com/browser-use/browser-use
+
+- Playwright:
+  https://playwright.dev/
+
+- Tauri tray:
+  https://v2.tauri.app/learn/system-tray/
+
+- Electron tray:
+  https://electronjs.org/docs/latest/tutorial/tray
+
+- faster-whisper:
+  https://github.com/SYSTRAN/faster-whisper
+
+- whisper.cpp:
+  https://github.com/ggml-org/whisper.cpp
+
+- Piper TTS:
+  https://github.com/rhasspy/piper
+
+- SQLite FTS5:
+  https://www.sqlite.org/fts5.html
+
+- LanceDB:
+  https://docs.lancedb.com/
+
+----------------------------------------------------------------------
+21. FINAL NOTE
+----------------------------------------------------------------------
+
+The goal is not to build a toy chatbot.
+
+The goal is a local Windows desktop agent that can:
+- reason locally,
+- see the screen,
+- use Chrome,
+- manage files,
+- talk by voice,
+- remember user-approved facts,
+- learn workflows,
+- apply for jobs safely,
+- and keep the user in control.
+
+Start with a reliable MVP. Add autonomy gradually. Safety, memory, and local-only operation are mandatory from day one.

@@ -1,0 +1,7 @@
+# Optional voice deps. ctranslate2 (faster-whisper) and piper-tts onnxruntime
+# wheels lag behind the latest Python. install.ps1 tries these best-effort.
+
+faster-whisper>=1.1,<2
+onnxruntime>=1.18           # required by faster-whisper for vad_filter
+sounddevice>=0.5,<1
+piper-tts>=1.2,<2

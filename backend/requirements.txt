@@ -1,0 +1,46 @@
+# Core OMNI deps. Version ranges (not exact pins) so pip picks wheels for the
+# user's Python version. Hard pins were forcing source builds on Python 3.14,
+# which fails because Meson chokes on apostrophes in the project path.
+
+fastapi>=0.115,<0.120
+uvicorn[standard]>=0.32,<0.40
+pydantic>=2.10,<3
+pydantic-settings>=2.6,<3
+httpx>=0.28,<0.30
+websockets>=14.1,<16
+python-multipart>=0.0.9       # required by FastAPI for /voice/transcribe (UploadFile)
+
+# LLM / embeddings
+ollama>=0.4,<0.7
+sentence-transformers>=3.3,<6
+
+# Memory
+lancedb>=0.17,<0.40
+pyarrow>=18,<23
+numpy>=2.0
+
+# Vision / screen
+mss>=10,<11
+opencv-python>=4.10,<5
+Pillow>=11,<12
+pytesseract>=0.3.13,<1
+
+# Browser + automation
+playwright>=1.49,<2
+pyautogui>=0.9.54
+pywinauto>=0.6.9,<1
+pyperclip>=1.9,<2
+pygetwindow>=0.0.9
+keyboard>=0.13.5
+
+# Files
+python-docx>=1.1,<2
+openpyxl>=3.1,<4
+pypdf>=5,<7
+
+# Crypto / safety
+cryptography>=44
+
+# Logging
+structlog>=24,<28
+rich>=13,<15

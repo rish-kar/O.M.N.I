@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#5ba3f5"/>
+      <stop offset="55%"  stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#b91c1c"/>
+    </linearGradient>
+    <linearGradient id="eye" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#fca5a5"/>
+      <stop offset="50%"  stop-color="#dc2626"/>
+      <stop offset="100%" stop-color="#fca5a5"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="40%" r="60%">
+      <stop offset="0%"   stop-color="#dc2626" stop-opacity="0.55"/>
+      <stop offset="45%"  stop-color="#3b82f6" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" fill="#03060e"/>
+  <circle cx="32" cy="32" r="30" fill="url(#halo)"/>
+  <path d="M 6 18 L 16 8 L 24 14 L 32 4 L 40 14 L 48 8 L 58 18 L 52 30 L 56 38 L 44 42 L 32 60 L 20 42 L 8 38 L 12 30 Z" fill="url(#g)"/>
+  <path d="M 14 22 L 22 18 L 32 14 L 42 18 L 50 22 L 46 32 L 32 50 L 18 32 Z" fill="#03060e" fill-opacity="0.65"/>
+  <path d="M 24 22 L 32 18 L 40 22 L 38 25 L 32 22 L 26 25 Z" fill="url(#g)" fill-opacity="0.85"/>
+  <rect x="20" y="27.5" width="24" height="3.5" rx="1.5" fill="url(#eye)"/>
+  <rect x="22" y="28.5" width="20" height="1.5" fill="#fff" fill-opacity="0.65"/>
+  <path d="M 14 36 L 22 38 L 20 42 L 12 40 Z" fill="url(#g)" fill-opacity="0.55"/>
+  <path d="M 50 36 L 42 38 L 44 42 L 52 40 Z" fill="url(#g)" fill-opacity="0.55"/>
+  <path d="M 26 46 L 32 56 L 38 46 L 32 50 Z" fill="#03060e" fill-opacity="0.55"/>
+</svg>

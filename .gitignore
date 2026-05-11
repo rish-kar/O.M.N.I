@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+
+# Node / Tauri
+node_modules/
+dist/
+dist-ssr/
+*.local
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+
+# OMNI runtime
+data/
+logs/
+snapshots/
+backups/
+models/
+*.sqlite
+*.sqlite-journal
+*.lance/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
