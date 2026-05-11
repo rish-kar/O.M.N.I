@@ -128,6 +128,11 @@ class ConfigPatch(BaseModel):
 class SpeakReq(BaseModel):
     text: str
     voice_id: Optional[str] = None
+    rate: Optional[float] = None  # per-call override; falls back to settings.voice.rate
+
+
+class VoiceDownloadReq(BaseModel):
+    voice_id: str
 
 
 # system
@@ -267,10 +272,21 @@ async def chat(req: ChatReq) -> dict:
         {"role": m["role"], "content": m["content"]}
         for m in mem.recent_messages(20, session_id=session_id)
     ]
-    history.insert(0, {
-        "role": "system",
-        "content": settings.personality.system_prompt(),
-    })
+    sys_prompt = settings.personality.system_prompt()
+    # Voice mode: wrap the personality with the voice instructions on BOTH
+    # sides. The user can crank personality verbosity to 10, but voice mode
+    # must stay terse and markdown-free — sandwiching the rules means the
+    # model sees them first and last, which beats a single contradictory
+    # middle clause every time.
+    if req.fast and settings.voice.instructions.strip():
+        instr = settings.voice.instructions.strip()
+        sys_prompt = (
+            f"VOICE MODE ACTIVE - these rules override all personality "
+            f"verbosity settings below:\n{instr}\n\n"
+            f"--- Base identity ---\n{sys_prompt}\n\n"
+            f"FINAL REMINDER (voice mode): {instr}"
+        )
+    history.insert(0, {"role": "system", "content": sys_prompt})
 
     # Pick the model. Voice mode asks for "fast"; if the configured fast model
     # isn't installed in Ollama, transparently fall back to text_reason.
@@ -355,23 +371,51 @@ async def chat_session_delete(sid: int) -> dict:
 # voice
 @app.get("/voice/voices")
 async def voice_voices() -> dict:
-    """List Piper voice files present in data/voices."""
+    """Voices the user can pick: catalog entries merged with what's installed
+    on disk. Each entry has ``installed`` so the UI can show Download / Test."""
     from .core.config import DATA
+    from .voice.catalog import list_catalog, CATALOG
     voices_dir = DATA / "voices"
-    voices = []
+    voices = list_catalog()
+    # Surface any extra .onnx files the user dropped in manually so we don't
+    # hide them.
     if voices_dir.exists():
+        known = {v["id"] for v in voices}
         for p in voices_dir.glob("*.onnx"):
-            json_path = p.with_suffix(p.suffix + ".json")
+            if p.stem in known or p.stem in CATALOG:
+                continue
+            json_ok = p.with_suffix(p.suffix + ".json").exists()
             voices.append({
-                "id": p.stem,
-                "file": str(p),
-                "ready": json_path.exists(),
+                "id": p.stem, "label": p.stem,
+                "locale": "", "gender": "", "quality": "",
+                "notes": "Custom voice.",
+                "installed": json_ok,
+                "url": "", "url_json": "",
             })
     return {
         "voices": voices,
         "current": settings.voice.voice_id,
         "voices_dir": str(voices_dir),
     }
+
+
+@app.post("/voice/download")
+async def voice_download(req: VoiceDownloadReq) -> dict:
+    """Download a voice from the rhasspy/piper-voices HuggingFace mirror."""
+    from .voice.catalog import download, VoiceDownloadError
+    try:
+        info = await asyncio.to_thread(download, req.voice_id)
+    except VoiceDownloadError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, **info}
+
+
+@app.delete("/voice/voices/{voice_id}")
+async def voice_delete(voice_id: str) -> dict:
+    from .voice.catalog import delete
+    if not await asyncio.to_thread(delete, voice_id):
+        raise HTTPException(400, "Voice can't be deleted (not installed, or it's the default).")
+    return {"ok": True}
 
 
 @app.post("/voice/transcribe")
@@ -422,7 +466,7 @@ async def voice_speak(req: SpeakReq) -> Response:
         raise HTTPException(503, "Voice features need extra Python packages. Run install.ps1 to add them.")
     voice_id = req.voice_id or settings.voice.voice_id
     try:
-        wav = await asyncio.to_thread(tts.synthesize_voice, req.text, voice_id)
+        wav = await asyncio.to_thread(tts.synthesize_voice, req.text, voice_id, req.rate)
     except FileNotFoundError as e:
         log.warning("voice file missing: %s", e)
         raise HTTPException(404, "Voice file not found. Open Settings -> Voice to download or pick another voice.")

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { X, Sparkles, Mic2, Volume2, ChevronDown, ChevronRight } from "lucide-react";
+import { X, Sparkles, Mic2, Volume2, ChevronDown, ChevronRight, Download, Trash2, Check, Loader2 } from "lucide-react";
 import { api, ApiError } from "../api";
 import { useStore } from "../store";
 import { InfoHint } from "./Tooltip";
@@ -13,12 +13,21 @@ const TONES = [
   { id: "mentor",   label: "Mentor",    desc: "Explanatory, teaches" },
 ];
 
-// Map non-technical labels to faster-whisper model ids.
 const STT_QUALITY = [
-  { id: "tiny.en",   label: "Fastest",  desc: "Snappy, less accurate" },
-  { id: "base.en",   label: "Balanced", desc: "Good speed, good accuracy (recommended)" },
+  { id: "tiny.en",   label: "Fastest",  desc: "Snappy, less accurate (recommended for live chat)" },
+  { id: "base.en",   label: "Balanced", desc: "Good speed, good accuracy" },
   { id: "medium.en", label: "Best",     desc: "Most accurate, a bit slower" },
 ];
+
+type VoiceEntry = {
+  id: string;
+  label: string;
+  locale: string;
+  gender: string;
+  quality: string;
+  notes: string;
+  installed: boolean;
+};
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const personality = useStore((s) => (s as any).personality) || {};
@@ -27,35 +36,44 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const pushToast   = useStore((s) => s.pushToast);
   const pushError   = useStore((s) => s.pushError);
 
-  const [name, setName]                 = useState(personality.name || "OMNI");
-  const [tone, setTone]                 = useState(personality.tone || "friendly");
-  const [humor, setHumor]               = useState(personality.humor ?? 4);
-  const [verbosity, setVerbosity]       = useState(personality.verbosity ?? 4);
-  const [addressAs, setAddressAs]       = useState(personality.address_user_as || "");
-  const [extras, setExtras]             = useState(personality.custom_instructions || "");
+  const [name, setName]               = useState(personality.name || "OMNI");
+  const [tone, setTone]               = useState(personality.tone || "friendly");
+  const [humor, setHumor]             = useState(personality.humor ?? 4);
+  const [verbosity, setVerbosity]     = useState(personality.verbosity ?? 4);
+  const [addressAs, setAddressAs]     = useState(personality.address_user_as || "");
+  const [extras, setExtras]           = useState(personality.custom_instructions || "");
 
-  const [voiceId, setVoiceId]           = useState(voice.voice_id || "en_US-lessac-medium");
-  const [autoSpeak, setAutoSpeak]       = useState(voice.auto_speak_replies ?? true);
-  const [pushToTalk, setPushToTalk]     = useState(voice.push_to_talk ?? false);
-  const [sttModel, setSttModel]         = useState(voice.stt_model || "base.en");
-  const [voices, setVoices] = useState<Array<{ id: string; ready: boolean }>>([]);
+  const [voiceId, setVoiceId]         = useState(voice.voice_id || "en_US-lessac-medium");
+  const [autoSpeak, setAutoSpeak]     = useState(voice.auto_speak_replies ?? true);
+  const [rate, setRate]               = useState<number>(voice.rate ?? 1.15);
+  const [sttModel, setSttModel]       = useState(voice.stt_model || "tiny.en");
+  const [voiceInstructions, setVoiceInstructions] = useState(
+    voice.instructions
+      ?? "You're talking, not typing. Reply in 1-2 short sentences. Plain conversational text only — no markdown, no emojis, no bullet lists, no headings, no code blocks. Skip preambles and just answer."
+  );
+
+  const [voices, setVoices]           = useState<VoiceEntry[]>([]);
+  const [downloading, setDownloading] = useState<Record<string, boolean>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [tab, setTab]   = useState<"personality" | "voice">("personality");
 
-  useEffect(() => {
-    api.voices().then((r: any) => setVoices(r.voices || [])).catch(() => {});
-  }, []);
+  const refreshVoices = async () => {
+    try {
+      const r: any = await api.voices();
+      setVoices(r.voices || []);
+    } catch {}
+  };
 
-  const installedVoices = voices.filter((v) => v.ready);
+  useEffect(() => { refreshVoices(); }, []);
 
   const save = async () => {
     setBusy(true);
     try {
       await api.patchConfig({
         personality: { name, tone, humor, verbosity, address_user_as: addressAs, custom_instructions: extras },
-        voice: { voice_id: voiceId, auto_speak_replies: autoSpeak, push_to_talk: pushToTalk, stt_model: sttModel },
+        voice: { voice_id: voiceId, auto_speak_replies: autoSpeak, rate, stt_model: sttModel, instructions: voiceInstructions },
       });
       const status = await api.status();
       setStatus(status);
@@ -70,16 +88,51 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const tryVoice = async () => {
+  // Preview the *currently selected* voice with the *currently chosen* rate
+  // — even before the user clicks Save. Without these per-call overrides the
+  // preview always uses the saved settings, which is why earlier tweaks felt
+  // like a no-op.
+  const tryVoice = async (vid?: string) => {
+    const target = vid || voiceId;
+    if (!target) return;
     try {
-      const sample = `Hi, I'm ${name || "OMNI"}. How does this voice sound?`;
-      const blob = await api.speakBlob(sample, voiceId);
+      const sample = `Hi, I'm ${name || "OMNI"}. This is the ${prettyVoiceName(target)} voice at ${rate.toFixed(2)}x speed.`;
+      const blob = await api.speakBlob(sample, target, rate);
       const url  = URL.createObjectURL(blob);
       const a    = new Audio(url);
       a.onended  = () => URL.revokeObjectURL(url);
+      a.onerror  = () => URL.revokeObjectURL(url);
       a.play();
     } catch (e: any) {
       const msg = e instanceof ApiError ? e.message : (e?.message || "Preview failed");
+      pushToast("error", msg);
+      pushError(msg, e instanceof ApiError ? e.detail : String(e), "voice");
+    }
+  };
+
+  const downloadVoice = async (vid: string) => {
+    setDownloading((d) => ({ ...d, [vid]: true }));
+    try {
+      await api.downloadVoice(vid);
+      pushToast("info", `Downloaded ${prettyVoiceName(vid)}`);
+      await refreshVoices();
+    } catch (e: any) {
+      const msg = e instanceof ApiError ? e.message : (e?.message || "Download failed");
+      pushToast("error", msg);
+      pushError(msg, e instanceof ApiError ? e.detail : String(e), "voice");
+    } finally {
+      setDownloading((d) => { const c = { ...d }; delete c[vid]; return c; });
+    }
+  };
+
+  const deleteVoice = async (vid: string) => {
+    try {
+      await api.deleteVoice(vid);
+      pushToast("info", `Removed ${prettyVoiceName(vid)}`);
+      if (voiceId === vid) setVoiceId("en_US-lessac-medium");
+      await refreshVoices();
+    } catch (e: any) {
+      const msg = e instanceof ApiError ? e.message : (e?.message || "Delete failed");
       pushToast("error", msg);
       pushError(msg, e instanceof ApiError ? e.detail : String(e), "voice");
     }
@@ -91,7 +144,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       <motion.div
         initial={{ opacity: 0, scale: 0.97, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="relative panel-hi ring-fire w-full max-w-xl p-6"
+        className="relative panel-hi ring-fire w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -116,17 +169,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
         {tab === "personality" && (
           <div className="space-y-4">
-            <Field
-              label="Name"
-              hint='What OMNI calls itself in conversation. Keep it "OMNI" unless you want to rename your assistant.'
-            >
+            <Field label="Name" hint="What OMNI calls itself in conversation.">
               <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
 
-            <Field
-              label="Tone"
-              hint="Sets how OMNI talks. The system prompt is rebuilt every chat, so changes apply on the next message."
-            >
+            <Field label="Tone" hint="How OMNI talks. Rebuilt into the system prompt on every chat.">
               <div className="grid grid-cols-5 gap-1.5">
                 {TONES.map((t) => (
                   <button
@@ -145,50 +192,27 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               </div>
             </Field>
 
-            <Field
-              label={`Humor — ${humor}/10`}
-              hint="0 = strictly serious. 10 = comedy mode. 4 is a balanced default."
-            >
-              <input
-                type="range" min={0} max={10} value={humor}
+            <Field label={`Humor — ${humor}/10`} hint="0 = strictly serious. 10 = comedy mode.">
+              <input type="range" min={0} max={10} value={humor}
                 onChange={(e) => setHumor(Number(e.target.value))}
-                className="w-full accent-omni-ember"
-              />
+                className="w-full accent-omni-ember" />
             </Field>
 
-            <Field
-              label={`Verbosity — ${verbosity}/10`}
-              hint="0 = one-line answers. 10 = full essays. 4 = short paragraphs."
-            >
-              <input
-                type="range" min={0} max={10} value={verbosity}
+            <Field label={`Verbosity — ${verbosity}/10`} hint="0 = one-liners. 10 = full essays.">
+              <input type="range" min={0} max={10} value={verbosity}
                 onChange={(e) => setVerbosity(Number(e.target.value))}
-                className="w-full accent-omni-ice"
-              />
+                className="w-full accent-omni-ice" />
             </Field>
 
-            <Field
-              label="Address you as"
-              hint="Optional. If filled, OMNI uses your name in chat when natural."
-            >
-              <input
-                className="input"
-                placeholder="(optional)"
-                value={addressAs}
-                onChange={(e) => setAddressAs(e.target.value)}
-              />
+            <Field label="Address you as" hint="Optional. OMNI uses your name when natural.">
+              <input className="input" placeholder="(optional)" value={addressAs}
+                onChange={(e) => setAddressAs(e.target.value)} />
             </Field>
 
-            <Field
-              label="Custom instructions"
-              hint="Free-form. Appended to OMNI's system prompt."
-            >
-              <textarea
-                className="input min-h-[80px] py-2"
+            <Field label="Custom instructions" hint="Free-form. Appended to the system prompt for every chat.">
+              <textarea className="input min-h-[80px] py-2"
                 placeholder="e.g. always include a salary range when scoring jobs"
-                value={extras}
-                onChange={(e) => setExtras(e.target.value)}
-              />
+                value={extras} onChange={(e) => setExtras(e.target.value)} />
             </Field>
           </div>
         )}
@@ -197,55 +221,60 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-4">
             <Field
               label="Voice"
-              hint="The voice OMNI uses to speak. Drop more Piper voices into data/voices/ to expand this list."
+              hint="Click Test to preview before saving. Download adds more voices from the Piper catalog."
             >
-              <div className="flex gap-2">
-                <select
-                  className="input flex-1"
-                  value={voiceId}
-                  onChange={(e) => setVoiceId(e.target.value)}
-                >
-                  {installedVoices.length === 0 && (
-                    <option value="">— No voices installed yet —</option>
-                  )}
-                  {installedVoices.map((v) => (
-                    <option key={v.id} value={v.id}>{prettyVoiceName(v.id)}</option>
-                  ))}
-                </select>
-                <button
-                  className="btn"
-                  onClick={tryVoice}
-                  disabled={installedVoices.length === 0}
-                  title="Preview the selected voice"
-                >
-                  <Volume2 className="h-3.5 w-3.5" />Preview
-                </button>
+              <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1 -mr-1">
+                {voices.length === 0 && (
+                  <p className="text-[11px] text-omni-mute italic">Loading voice catalog…</p>
+                )}
+                {voices.map((v) => (
+                  <VoiceRow
+                    key={v.id}
+                    voice={v}
+                    selected={voiceId === v.id}
+                    busy={!!downloading[v.id]}
+                    onSelect={() => v.installed && setVoiceId(v.id)}
+                    onTest={() => tryVoice(v.id)}
+                    onDownload={() => downloadVoice(v.id)}
+                    onDelete={() => deleteVoice(v.id)}
+                  />
+                ))}
               </div>
-              {installedVoices.length === 0 && (
-                <p className="text-[11px] text-omni-warn/90 mt-2 leading-relaxed">
-                  No voices found. Run <code className="font-mono">install.ps1</code> to download
-                  the default voice automatically, or drop a Piper{" "}
-                  <code>.onnx</code> + <code>.onnx.json</code> pair into{" "}
-                  <code>data/voices/</code>.
-                </p>
-              )}
+            </Field>
+
+            <Field
+              label={`Speech speed — ${rate.toFixed(2)}x`}
+              hint="How fast OMNI speaks. 1.0x is the voice's natural rate. Click Test on any installed voice to hear the change."
+            >
+              <input
+                type="range" min={0.7} max={1.6} step={0.05} value={rate}
+                onChange={(e) => setRate(Number(e.target.value))}
+                className="w-full accent-omni-flame"
+              />
+              <div className="flex justify-between text-[10px] text-omni-mute mt-1">
+                <span>0.7x slow</span><span>1.0x natural</span><span>1.6x fast</span>
+              </div>
             </Field>
 
             <Field
               label="Auto-speak replies"
-              hint="When ON, every reply OMNI sends is read out loud immediately. Turn OFF to keep replies silent — you can still hover any message and click the speaker."
+              hint="When ON, every reply OMNI sends is read out loud. Live mode forces this on regardless."
             >
               <PillToggle value={autoSpeak} onChange={setAutoSpeak} on="On — read replies aloud" off="Off — text only" />
             </Field>
 
             <Field
-              label="Mic mode"
-              hint="How the mic button behaves. Push-to-talk: hold while speaking. Toggle: click once to start, again to stop."
+              label="Voice instructions"
+              hint="Extra instructions for voice mode only. Layered on top of the personality. Keep it tight — long replies make for long audio."
             >
-              <PillToggle value={pushToTalk} onChange={setPushToTalk} on="Push-to-talk (hold)" off="Click to toggle" />
+              <textarea
+                className="input min-h-[90px] py-2 text-[12px]"
+                placeholder="e.g. reply in one sentence. Plain text. No emojis."
+                value={voiceInstructions}
+                onChange={(e) => setVoiceInstructions(e.target.value)}
+              />
             </Field>
 
-            {/* Advanced collapsible */}
             <button
               type="button"
               onClick={() => setShowAdvanced((v) => !v)}
@@ -258,7 +287,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             {showAdvanced && (
               <Field
                 label="Speech recognition quality"
-                hint="Trade-off between speed and accuracy. Balanced works for most people."
+                hint="Trade-off between speed and accuracy. Tiny.en (Fastest) is best for live conversation."
               >
                 <div className="grid grid-cols-3 gap-1.5">
                   {STT_QUALITY.map((q) => (
@@ -266,14 +295,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       key={q.id}
                       onClick={() => setSttModel(q.id)}
                       title={q.desc}
-                      className={`h-9 px-2 inline-flex flex-col items-center justify-center rounded-lg border text-[11px]
+                      className={`h-9 px-2 inline-flex items-center justify-center rounded-lg border text-[11px]
                                   whitespace-nowrap transition-all
                                   ${sttModel === q.id
                                     ? "border-transparent text-white shadow-ember"
                                     : "border-white/10 bg-white/[0.04] text-omni-textDim hover:bg-white/[0.10] hover:text-omni-text"}`}
                       style={sttModel === q.id ? { backgroundImage: "linear-gradient(135deg, #15346e 0%, #b91c1c 100%)" } : undefined}
                     >
-                      <span className="font-medium">{q.label}</span>
+                      {q.label}
                     </button>
                   ))}
                 </div>
@@ -299,15 +328,92 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function VoiceRow({ voice: v, selected, busy, onSelect, onTest, onDownload, onDelete }: {
+  voice: VoiceEntry;
+  selected: boolean;
+  busy: boolean;
+  onSelect: () => void;
+  onTest: () => void;
+  onDownload: () => void;
+  onDelete: () => void;
+}) {
+  const isDefault = v.id === "en_US-lessac-medium";
+  return (
+    <div
+      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all
+                  ${selected
+                    ? "border-omni-flame/50 bg-omni-flame/10"
+                    : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"}`}
+    >
+      <button
+        onClick={onSelect}
+        disabled={!v.installed}
+        className={`flex-1 text-left disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        <div className="text-[12px] font-medium flex items-center gap-1.5">
+          {v.label}
+          {selected && <Check className="h-3 w-3 text-omni-flame" />}
+          {!v.installed && (
+            <span className="text-[9px] uppercase tracking-wider text-omni-mute border border-white/15 rounded px-1 py-0.5">
+              not installed
+            </span>
+          )}
+        </div>
+        <div className="text-[10px] text-omni-mute leading-snug">
+          {[v.locale, v.gender, v.quality].filter(Boolean).join(" · ")}
+          {v.notes && ` — ${v.notes}`}
+        </div>
+      </button>
+
+      <div className="flex items-center gap-1 shrink-0">
+        {v.installed ? (
+          <>
+            <button
+              onClick={onTest}
+              title="Preview this voice"
+              className="h-7 w-7 inline-flex items-center justify-center rounded
+                         border border-white/10 bg-white/[0.04] hover:bg-white/[0.10] text-omni-textDim hover:text-omni-text"
+            >
+              <Volume2 className="h-3.5 w-3.5" />
+            </button>
+            {!isDefault && (
+              <button
+                onClick={onDelete}
+                title="Remove voice file from disk"
+                className="h-7 w-7 inline-flex items-center justify-center rounded
+                           border border-white/10 bg-white/[0.04] hover:bg-omni-danger/15 hover:border-omni-danger/40
+                           text-omni-mute hover:text-omni-danger"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </>
+        ) : (
+          <button
+            onClick={onDownload}
+            disabled={busy}
+            title="Download from rhasspy/piper-voices"
+            className="h-7 px-2 inline-flex items-center gap-1 rounded text-[11px]
+                       border border-omni-flame/35 bg-omni-flame/10 text-omni-flame
+                       hover:bg-omni-flame/20 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+            {busy ? "Downloading…" : "Download"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function prettyVoiceName(id: string) {
-  // Turn "en_US-lessac-medium" into "English (US) · lessac · medium"
+  // "en_US-lessac-medium" → "lessac (en_US, medium)"
   const parts = id.split("-");
   if (parts.length >= 3) {
-    const lang = parts[0];
+    const locale = parts[0];
     const speaker = parts[1];
     const quality = parts.slice(2).join("-");
-    const langPretty = lang.replace("_", " (").replace(/$/, lang.includes("_") ? ")" : "");
-    return `${langPretty} · ${speaker} · ${quality}`;
+    return `${speaker} (${locale}, ${quality})`;
   }
   return id;
 }

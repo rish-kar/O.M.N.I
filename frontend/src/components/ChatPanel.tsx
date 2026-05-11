@@ -10,6 +10,15 @@ const SPEECH_THRESHOLD  = 0.05;  // RMS above this counts as speech
 const SILENCE_MS        = 700;   // ms of silence before auto-stop — snappy turn-taking
 const SPEAK_TIMEOUT_MS  = 30_000; // hard cap so a stuck TTS never freezes the loop
 
+// Barge-in: how loud + how long the user has to speak before we abort the AI.
+// Higher than SPEECH_THRESHOLD because AEC is imperfect — speaker bleed-through
+// would otherwise self-trigger and you'd never hear a full reply.
+const BARGE_IN_THRESHOLD  = 0.18;
+const BARGE_IN_CONFIRM_MS = 180;
+// Wait this long after audio starts before listening for barge-in. Avoids the
+// initial speaker click / ramp-up triggering an immediate self-interrupt.
+const BARGE_IN_WARMUP_MS  = 500;
+
 type VoiceState = "idle" | "listening" | "thinking" | "speaking";
 
 export default function ChatPanel() {
@@ -101,16 +110,91 @@ export default function ChatPanel() {
     }
   };
 
+  // Starts a separate mic stream that just watches the input level. When the
+  // user speaks loudly enough for long enough, it calls speakAbort — which
+  // ends the current TTS playback. The outer speakText promise then resolves
+  // and the existing `.then()` flow restarts the real recording session.
+  //
+  // Echo cancellation is on, but speaker bleed-through still raises the
+  // baseline RMS, so the threshold is intentionally higher than the regular
+  // listening threshold and there's a warm-up window after audio starts.
+  const startBargeInMonitor = async (): Promise<() => void> => {
+    let bStream: MediaStream | null = null;
+    let bCtx: AudioContext | null = null;
+    let bRaf: number | null = null;
+    let bargeStartTs: number | null = null;
+    const launchedAt = performance.now();
+    let triggered = false;
+
+    const cleanup = () => {
+      if (bRaf) { try { cancelAnimationFrame(bRaf); } catch {} bRaf = null; }
+      if (bCtx) { try { bCtx.close(); } catch {} bCtx = null; }
+      if (bStream) { try { bStream.getTracks().forEach((t) => t.stop()); } catch {} bStream = null; }
+    };
+
+    try {
+      bStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } as MediaTrackConstraints,
+      });
+      bCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const src = bCtx.createMediaStreamSource(bStream);
+      const an  = bCtx.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      const arr = new Uint8Array(an.frequencyBinCount);
+
+      const tick = () => {
+        if (triggered || !bCtx) return;
+        an.getByteTimeDomainData(arr);
+        let sum = 0;
+        for (let i = 0; i < arr.length; i++) {
+          const v = (arr[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / arr.length);
+        const warmedUp = performance.now() - launchedAt > BARGE_IN_WARMUP_MS;
+
+        if (warmedUp && rms > BARGE_IN_THRESHOLD) {
+          if (bargeStartTs === null) bargeStartTs = performance.now();
+          else if (performance.now() - bargeStartTs > BARGE_IN_CONFIRM_MS) {
+            triggered = true;
+            // Aborts the playing audio; speakText's promise then resolves
+            // and the auto-speak useEffect restarts a full recording.
+            speakAbort.current?.();
+            return;
+          }
+        } else {
+          bargeStartTs = null;
+        }
+        bRaf = requestAnimationFrame(tick);
+      };
+      bRaf = requestAnimationFrame(tick);
+    } catch {
+      // Mic access denied / unavailable. Degrade silently; user can still
+      // click the mic button to interrupt.
+      cleanup();
+    }
+    return cleanup;
+  };
+
   // Plays TTS; resolves when audio finishes, is interrupted, errors, or hits a
   // hard timeout. In voice mode the loop relies on this ALWAYS resolving so we
-  // can resume listening — never let it hang.
+  // can resume listening — never let it hang. In voice mode we also run a
+  // barge-in monitor so the user can just *speak* to interrupt.
   const speakText = async (text: string): Promise<void> => {
     // Cancel anything currently playing first
     speakAbort.current?.();
 
     let watchdog: ReturnType<typeof setTimeout> | null = null;
+    const bargeInCleanup: { fn: (() => void) | null } = { fn: null };
     try {
-      const blob = await api.speakBlob(text);
+      // Per-call overrides so live mode honours the saved rate/voice without
+      // a backend restart.
+      const blob = await api.speakBlob(text, voiceCfg?.voice_id, voiceCfg?.rate);
       if (!blob || blob.size < 100) {
         // Backend returned an empty/near-empty WAV — treat as a no-op so the
         // live-mode loop still continues.
@@ -140,7 +224,17 @@ export default function ChatPanel() {
         // Watchdog: belt-and-suspenders against zero-duration audio or stuck
         // playback. Resolves the promise so the voice loop keeps moving.
         watchdog = setTimeout(finish, SPEAK_TIMEOUT_MS);
-        a.play().catch(finish);
+        a.play()
+          .then(() => {
+            // Audio is now playing — arm barge-in if we're in voice mode.
+            if (voiceStateRef.current === "speaking") {
+              startBargeInMonitor().then((cleanup) => {
+                if (done) cleanup();   // already finished before monitor armed
+                else bargeInCleanup.fn = cleanup;
+              });
+            }
+          })
+          .catch(finish);
       });
     } catch (e: any) {
       // Don't toast in voice mode; just log and let the loop continue.
@@ -155,6 +249,7 @@ export default function ChatPanel() {
       }
     } finally {
       if (watchdog) clearTimeout(watchdog);
+      bargeInCleanup.fn?.();
     }
   };
 
@@ -198,7 +293,13 @@ export default function ChatPanel() {
     if (recording || transcribing) return;
     if (voiceStateRef.current !== "idle") setVS("listening");
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const s = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } as MediaTrackConstraints,
+      });
       stream.current = s;
       chunks.current = [];
       cancelledRef.current    = false;
@@ -399,8 +500,9 @@ export default function ChatPanel() {
           <VoiceStatePill state={voiceState} />
           <InfoHint side="bottom">
             Type or click the mic. Toggle <strong>Live</strong> for hands-free voice chat —
-            it listens, replies, then listens again. Tap the mic while {omniName} is speaking to interrupt.
-            <strong> Chats</strong> lets you switch between past conversations.
+            {omniName} keeps listening, replies, then listens again. Just start speaking to
+            interrupt while {omniName} is talking. <strong>Chats</strong> switches between
+            past conversations.
           </InfoHint>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -558,7 +660,7 @@ function VoiceModeStatus({ state, hasSpeech, name }: { state: VoiceState; hasSpe
     text = `${name} is thinking…`;
   } else {
     icon = <Volume2 className="h-3 w-3 animate-pulse" />;
-    text = `${name} is speaking — tap mic to interrupt`;
+    text = `${name} is speaking — just start talking to interrupt`;
   }
   const color = state === "thinking" ? "text-omni-ice" : "text-omni-flame";
   return (

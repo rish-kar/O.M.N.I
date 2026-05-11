@@ -108,6 +108,12 @@ export const api = {
   // Voice
   voices: () => jfetch("/voice/voices"),
 
+  downloadVoice: (voice_id: string) =>
+    jfetch("/voice/download", { method: "POST", body: JSON.stringify({ voice_id }) }),
+
+  deleteVoice: (voice_id: string) =>
+    jfetch(`/voice/voices/${encodeURIComponent(voice_id)}`, { method: "DELETE" }),
+
   transcribe: async (wav: Blob, signal?: AbortSignal): Promise<{ text: string }> => {
     const fd = new FormData();
     fd.append("audio", wav, "speech.wav");
@@ -153,13 +159,13 @@ export const api = {
     return r.json();
   },
 
-  speakBlob: async (text: string, voice_id?: string): Promise<Blob> => {
+  speakBlob: async (text: string, voice_id?: string, rate?: number): Promise<Blob> => {
     let r: Response;
     try {
       r = await fetch(BASE + "/voice/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice_id }),
+        body: JSON.stringify({ text, voice_id, rate }),
       });
     } catch {
       throw new ApiError(
