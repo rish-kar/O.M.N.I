@@ -37,27 +37,18 @@ export default function App() {
     refresh();
     api.models().then(setModels).catch(() => {});
 
-    // Load chat sessions + restore most recent (or last-viewed) session
+    // Load session list for the Chats dropdown, but always start fresh —
+    // the user can open a previous chat via the Chats button.
     (async () => {
       try {
         const data = await api.chatSessions();
-        const sessions = data?.sessions || [];
-        setSessions(sessions);
-        if (sessions.length > 0) {
-          const stored = Number(localStorage.getItem("omni.currentSessionId") || "");
-          const target = sessions.find((s: any) => s.id === stored) || sessions[0];
-          setCurrentSessionId(target.id);
-          const hist = await api.chatHistory(target.id, 500);
-          setMessages(
-            (hist?.messages || []).map((m: any) => ({
-              role: m.role as "user" | "assistant",
-              content: m.content,
-              ts: new Date(String(m.ts).replace(" ", "T") + "Z").getTime(),
-            })),
-          );
-        }
+        setSessions(data?.sessions || []);
       } catch {}
     })();
+    // Clear any saved session so the first message creates a brand-new one.
+    setCurrentSessionId(null);
+    try { localStorage.removeItem("omni.currentSessionId"); } catch {}
+    setMessages([]);
 
     const stop = connectEvents(applyEvent);
     const t = setInterval(refresh, 5000);

@@ -23,16 +23,39 @@ class Region:
     height: int
 
 
+def _resize_for_vlm(img: Image.Image, max_dim: int = 1280) -> Image.Image:
+    """Shrink image so neither dimension exceeds max_dim (preserves aspect ratio)."""
+    w, h = img.size
+    if max(w, h) <= max_dim:
+        return img
+    ratio = max_dim / max(w, h)
+    return img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+
+
 def grab(region: Optional[Region] = None) -> Image.Image:
-    """Capture screen or region as Pillow Image (RGB)."""
+    """Capture the combined virtual screen (all monitors) or a specific region."""
     with mss.mss() as sct:
         mon = (
             {"left": region.left, "top": region.top,
              "width": region.width, "height": region.height}
-            if region else sct.monitors[1]
+            if region else sct.monitors[0]  # monitors[0] = combined virtual screen
         )
         raw = sct.grab(mon)
         return Image.frombytes("RGB", raw.size, raw.rgb)
+
+
+def grab_all_monitors() -> list[Image.Image]:
+    """Capture each physical monitor separately, resized for VLM processing."""
+    with mss.mss() as sct:
+        images = []
+        monitors = sct.monitors[1:]  # skip [0] which is the combined virtual screen
+        if not monitors:
+            monitors = sct.monitors  # fallback: single combined
+        for mon in monitors:
+            raw = sct.grab(mon)
+            img = Image.frombytes("RGB", raw.size, raw.rgb)
+            images.append(_resize_for_vlm(img))
+        return images
 
 
 def save_temp(img: Image.Image, name: str = "shot") -> Path:

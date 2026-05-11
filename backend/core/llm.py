@@ -60,11 +60,20 @@ class Ollama:
         messages: list[dict],
         model: Optional[str] = None,
         temperature: float = 0.2,
+        images: Optional[list] = None,
     ) -> str:
-        model = model or settings.profile.text_reason
+        # Use vision model when screen images are provided
+        model = model or (settings.profile.vision if images else settings.profile.text_reason)
+        msgs = list(messages)
+        if images:
+            # Attach images to the last user message
+            for i in range(len(msgs) - 1, -1, -1):
+                if msgs[i].get("role") == "user":
+                    msgs[i] = {**msgs[i], "images": [_b64(img) for img in images]}
+                    break
         r = await self._client.post(
             "/api/chat",
-            json={"model": model, "messages": messages, "stream": False,
+            json={"model": model, "messages": msgs, "stream": False,
                   "options": {"temperature": temperature}},
         )
         r.raise_for_status()

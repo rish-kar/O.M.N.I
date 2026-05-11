@@ -79,8 +79,8 @@ export const api = {
   closeBrowser:  () => jfetch("/browser/close",  { method: "POST" }),
   browserTabs:   () => jfetch("/browser/tabs"),
 
-  chat: (message: string, session_id?: number | null, fast?: boolean) =>
-    jfetch("/chat", { method: "POST", body: JSON.stringify({ message, session_id: session_id ?? null, fast: !!fast }) }),
+  chat: (message: string, session_id?: number | null, fast?: boolean, with_screen?: boolean) =>
+    jfetch("/chat", { method: "POST", body: JSON.stringify({ message, session_id: session_id ?? null, fast: !!fast, with_screen: !!with_screen }) }),
 
   chatHistory: (session_id?: number | null, limit = 200) =>
     jfetch(`/chat/history?${session_id != null ? `session_id=${session_id}&` : ""}limit=${limit}`),
@@ -107,6 +107,12 @@ export const api = {
 
   // Voice
   voices: () => jfetch("/voice/voices"),
+
+  downloadVoice: (voice_id: string) =>
+    jfetch("/voice/download", { method: "POST", body: JSON.stringify({ voice_id }) }),
+
+  deleteVoice: (voice_id: string) =>
+    jfetch(`/voice/voices/${encodeURIComponent(voice_id)}`, { method: "DELETE" }),
 
   transcribe: async (wav: Blob, signal?: AbortSignal): Promise<{ text: string }> => {
     const fd = new FormData();
@@ -153,13 +159,13 @@ export const api = {
     return r.json();
   },
 
-  speakBlob: async (text: string, voice_id?: string): Promise<Blob> => {
+  speakBlob: async (text: string, voice_id?: string, rate?: number): Promise<Blob> => {
     let r: Response;
     try {
       r = await fetch(BASE + "/voice/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice_id }),
+        body: JSON.stringify({ text, voice_id, rate }),
       });
     } catch {
       throw new ApiError(

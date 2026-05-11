@@ -144,6 +144,14 @@ class Voice(BaseModel):
     stt_model: str = "tiny.en"                 # faster-whisper model — default to fastest
     language: str = "en"
     push_to_talk: bool = False                 # when False, the UI uses VAD/click-to-toggle
+    # Extra system instructions layered on top of the personality whenever the
+    # user is talking to OMNI via voice. Defaults to a brevity/no-markdown rule
+    # so the TTS doesn't read out bullets, code blocks, and emojis.
+    instructions: str = (
+        "You're talking, not typing. Reply in 1-2 short sentences. "
+        "Plain conversational text only — no markdown, no emojis, no bullet "
+        "lists, no headings, no code blocks. Skip preambles and just answer."
+    )
 
 
 class Settings(BaseSettings):
