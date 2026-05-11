@@ -4,13 +4,13 @@
 
 fastapi>=0.115,<0.120
 uvicorn[standard]>=0.32,<0.40
-pydantic>=2.10,<3
+pydantic>=2.10,<3 
 pydantic-settings>=2.6,<3
 httpx>=0.28,<0.30
 websockets>=14.1,<16
 python-multipart>=0.0.9       # required by FastAPI for /voice/transcribe (UploadFile)
 
-# LLM / embeddings
+# LLM / embeddings 
 ollama>=0.4,<0.7
 sentence-transformers>=3.3,<6
 
@@ -44,3 +44,4 @@ cryptography>=44
 # Logging
 structlog>=24,<28
 rich>=13,<15
+>
