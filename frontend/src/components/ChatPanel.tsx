@@ -46,18 +46,28 @@ export default function ChatPanel() {
   const stream          = useRef<MediaStream | null>(null);
   const audioCtx        = useRef<AudioContext | null>(null);
   const analyser        = useRef<AnalyserNode | null>(null);
-  const rafId           = useRef<number | null>(null);
+  // setInterval ID for the VAD tick (replaces requestAnimationFrame so it
+  // keeps running when the window is minimised/unfocused).
+  const tickIdRef       = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSpoken      = useRef<string>("");
   const transcribeAbort = useRef<AbortController | null>(null);
   const currentAudio    = useRef<HTMLAudioElement | null>(null);
   const speakAbort      = useRef<(() => void) | null>(null);
 
-  // Refs to escape stale closures
+  // Refs that shadow state — allow stale-closure-safe reads from async callbacks.
   const voiceStateRef   = useRef<VoiceState>("idle");
   const cancelledRef    = useRef(false);
   const hasSpeechRef    = useRef(false);
   const silenceStartRef = useRef<number | null>(null);
   const sessionIdRef    = useRef<number | null>(null);
+  // recording / transcribing refs: startRecording is captured by the auto-speak
+  // effect closure; without refs it would read stale boolean state from the render
+  // cycle where the effect fired (possibly transcribing=true) and refuse to start.
+  const recordingRef    = useRef(false);
+  const transcribingRef = useRef(false);
+  // Always points to the latest startRecording so the auto-speak .then() never
+  // calls a stale version that has closed over wrong recording/transcribing state.
+  const startRecordingRef = useRef<() => Promise<void>>(async () => {});
 
   // Atomic state+ref updater — avoids the lag of useEffect mirroring
   const setVS = (s: VoiceState) => {
@@ -77,7 +87,7 @@ export default function ChatPanel() {
     }
     return () => {
       speakAbort.current?.();
-      if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = null; }
+      if (tickIdRef.current) { clearInterval(tickIdRef.current); tickIdRef.current = null; }
       stream.current?.getTracks().forEach((t) => t.stop());
       try { audioCtx.current?.close(); } catch {}
       audioCtx.current = null;
@@ -91,6 +101,8 @@ export default function ChatPanel() {
 
   // Auto-speak: play reply and continue the conversation loop.
   // Only runs in live voice mode — text mode always replies silently.
+  // Uses startRecordingRef (not the captured startRecording) so the .then()
+  // always calls the up-to-date function regardless of stale closures.
   useEffect(() => {
     if (voiceState === "idle") return;
     const last = messages[messages.length - 1];
@@ -103,7 +115,7 @@ export default function ChatPanel() {
     speakText(last.content).then(() => {
       if (voiceStateRef.current !== "idle") {
         setVS("listening");
-        startRecording();
+        startRecordingRef.current();
       }
     });
   }, [messages, voiceState]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -130,13 +142,13 @@ export default function ChatPanel() {
   const startBargeInMonitor = async (): Promise<() => void> => {
     let bStream: MediaStream | null = null;
     let bCtx: AudioContext | null = null;
-    let bRaf: number | null = null;
+    let bInterval: ReturnType<typeof setInterval> | null = null;
     let bargeStartTs: number | null = null;
     const launchedAt = performance.now();
     let triggered = false;
 
     const cleanup = () => {
-      if (bRaf) { try { cancelAnimationFrame(bRaf); } catch {} bRaf = null; }
+      if (bInterval) { try { clearInterval(bInterval); } catch {} bInterval = null; }
       if (bCtx) { try { bCtx.close(); } catch {} bCtx = null; }
       if (bStream) { try { bStream.getTracks().forEach((t) => t.stop()); } catch {} bStream = null; }
     };
@@ -179,12 +191,9 @@ export default function ChatPanel() {
         } else {
           bargeStartTs = null;
         }
-        bRaf = requestAnimationFrame(tick);
       };
-      bRaf = requestAnimationFrame(tick);
+      bInterval = setInterval(tick, 30);
     } catch {
-      // Mic access denied / unavailable. Degrade silently; user can still
-      // click the mic button to interrupt.
       cleanup();
     }
     return cleanup;
@@ -288,10 +297,9 @@ export default function ChatPanel() {
         content: e instanceof ApiError ? e.message : "I couldn't reach the model. Check the error console (bottom-left).",
         ts: Date.now(),
       });
-      // Voice mode should keep listening even on chat error
       if (voiceStateRef.current !== "idle") {
         setVS("listening");
-        setTimeout(() => startRecording(), 200);
+        setTimeout(() => startRecordingRef.current(), 200);
       }
     } finally {
       setBusy(false);
@@ -299,7 +307,9 @@ export default function ChatPanel() {
   };
 
   const startRecording = async () => {
-    if (recording || transcribing) return;
+    // Use refs (not state) so this check is correct even when called from
+    // a stale closure (e.g. the auto-speak .then() captured an old render).
+    if (recordingRef.current || transcribingRef.current) return;
     if (voiceStateRef.current !== "idle") setVS("listening");
     try {
       const s = await navigator.mediaDevices.getUserMedia({
@@ -333,8 +343,23 @@ export default function ChatPanel() {
       src.connect(an);
       analyser.current = an;
       const arr = new Uint8Array(an.frequencyBinCount);
+
+      // Use setInterval (not requestAnimationFrame) so the VAD tick keeps
+      // running when the window is minimised or unfocused. RAF is paused by
+      // the browser for background windows, which makes the silence detector
+      // go blind and either never auto-stop or fire at the wrong time.
       const tick = () => {
         if (!analyser.current) return;
+
+        // AudioContext can be suspended when the window loses focus (Chromium
+        // behaviour). Resume it so we keep getting real mic data instead of
+        // zeroed-out buffers that would fool the silence detector.
+        const ctxNow = audioCtx.current;
+        if (ctxNow && ctxNow.state === "suspended") {
+          ctxNow.resume().catch(() => {});
+          return; // skip analysis this tick; wait for resume
+        }
+
         analyser.current.getByteTimeDomainData(arr);
         let sum = 0;
         for (let i = 0; i < arr.length; i++) {
@@ -354,15 +379,14 @@ export default function ChatPanel() {
               silenceStartRef.current = performance.now();
             } else if (performance.now() - silenceStartRef.current > SILENCE_MS) {
               stopRecording();
-              return;
             }
           }
         }
-
-        rafId.current = requestAnimationFrame(tick);
       };
-      rafId.current = requestAnimationFrame(tick);
+      if (tickIdRef.current) clearInterval(tickIdRef.current);
+      tickIdRef.current = setInterval(tick, 30); // ~33 fps, fires even when minimised
 
+      recordingRef.current = true;
       setRecording(true);
     } catch (e: any) {
       pushToast("error", "Microphone access denied.");
@@ -370,12 +394,14 @@ export default function ChatPanel() {
       if (voiceStateRef.current !== "idle") setVS("idle");
     }
   };
+  // Keep ref in sync so the auto-speak effect always calls the latest version.
+  startRecordingRef.current = startRecording;
 
   const stopRecording = () => {
     try { recorder.current?.stop(); } catch {}
-    if (rafId.current) cancelAnimationFrame(rafId.current);
-    rafId.current = null;
+    if (tickIdRef.current) { clearInterval(tickIdRef.current); tickIdRef.current = null; }
     setLevel(0);
+    recordingRef.current = false;
     setRecording(false);
   };
 
@@ -383,9 +409,9 @@ export default function ChatPanel() {
     cancelledRef.current = true;
     chunks.current = [];
     try { recorder.current?.stop(); } catch {}
-    if (rafId.current) cancelAnimationFrame(rafId.current);
-    rafId.current = null;
+    if (tickIdRef.current) { clearInterval(tickIdRef.current); tickIdRef.current = null; }
     setLevel(0);
+    recordingRef.current = false;
     setRecording(false);
   };
 
@@ -393,6 +419,7 @@ export default function ChatPanel() {
     transcribeAbort.current?.abort();
     transcribeAbort.current = null;
     chunks.current = [];
+    transcribingRef.current = false;
     setTranscribing(false);
   };
 
@@ -409,10 +436,10 @@ export default function ChatPanel() {
       return;
     }
     if (chunks.current.length === 0) {
-      // No data captured — in voice mode, just resume listening
-      if (voiceStateRef.current !== "idle") setTimeout(() => startRecording(), 100);
+      if (voiceStateRef.current !== "idle") setTimeout(() => startRecordingRef.current(), 100);
       return;
     }
+    transcribingRef.current = true;
     setTranscribing(true);
     const ac = new AbortController();
     transcribeAbort.current = ac;
@@ -422,28 +449,36 @@ export default function ChatPanel() {
       const wav  = await blobToWavMono16k(blob);
       const r    = await api.transcribe(wav, ac.signal);
       const text = (r?.text || "").trim();
+      // Transcription done — clear the flag BEFORE calling send() so that
+      // the auto-speak effect, when it fires and calls startRecordingRef,
+      // always sees transcribing=false and doesn't skip starting the mic.
+      transcribingRef.current = false;
+      setTranscribing(false);
+      transcribeAbort.current = null;
       if (text) {
         await send(text);
       } else {
-        // In voice mode, silently resume listening on empty transcription
         if (voiceStateRef.current !== "idle") {
           setVS("listening");
-          setTimeout(() => startRecording(), 100);
+          setTimeout(() => startRecordingRef.current(), 100);
         } else {
           pushToast("warning", "No speech detected.");
         }
       }
     } catch (e: any) {
+      transcribingRef.current = false;
       if (e instanceof ApiError && e.message === "Cancelled") {
         pushToast("info", "Transcription cancelled.");
       } else {
         handleApiError(e, "Transcription failed.", "voice");
         if (voiceStateRef.current !== "idle") {
           setVS("listening");
-          setTimeout(() => startRecording(), 200);
+          setTimeout(() => startRecordingRef.current(), 200);
         }
       }
     } finally {
+      // Belt-and-suspenders: ensure ref is always cleared even on unexpected throws
+      transcribingRef.current = false;
       setTranscribing(false);
       transcribeAbort.current = null;
     }
@@ -572,7 +607,7 @@ export default function ChatPanel() {
           </div>
         )}
         {inVoiceMode && (
-          <VoiceModeStatus state={voiceState} hasSpeech={hasSpeechRef.current} name={omniName} />
+          <VoiceModeStatus state={voiceState} name={omniName} />
         )}
       </div>
 
@@ -645,18 +680,18 @@ function VoiceStatePill({ state }: { state: VoiceState }) {
   );
 }
 
-function VoiceModeStatus({ state, hasSpeech, name }: { state: VoiceState; hasSpeech: boolean; name: string }) {
+function VoiceModeStatus({ state, name }: { state: VoiceState; name: string }) {
   if (state === "idle") return null;
   let icon = null, text = "";
   if (state === "listening") {
     icon = <Radio className="h-3 w-3 animate-pulse" />;
-    text = hasSpeech ? "Listening — pause to send" : `Listening — say something to ${name}…`;
+    text = `Listening…`;
   } else if (state === "thinking") {
     icon = <Loader2 className="h-3 w-3 animate-spin" />;
     text = `${name} is thinking…`;
   } else {
     icon = <Volume2 className="h-3 w-3 animate-pulse" />;
-    text = `${name} is speaking — just start talking to interrupt`;
+    text = `${name} is speaking — start talking to interrupt`;
   }
   const color = state === "thinking" ? "text-omni-ice" : "text-omni-flame";
   return (
